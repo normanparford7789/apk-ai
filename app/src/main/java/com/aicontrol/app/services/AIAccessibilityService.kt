@@ -71,7 +71,6 @@ class AIAccessibilityService : AccessibilityService() {
                     val swBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, false)
                     bitmap?.recycle()
                     hardwareBuffer.close()
-                    screenshot.colorSpace?.close()
                     if (cont.isActive) cont.resume(swBitmap)
                 } catch (e: Exception) {
                     Log.e(TAG, "takeScreenshot onSuccess parse error", e)
