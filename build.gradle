@@ -2,8 +2,6 @@
 buildscript {
     ext {
         kotlin_version = '1.9.22'
-        nav_version = '2.7.6'
-        room_version = '2.6.1'
     }
     repositories {
         google()
@@ -15,13 +13,9 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// NOTE: Do NOT add allprojects.repositories here.
+// Repositories are declared in settings.gradle via dependencyResolutionManagement.
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
 }
