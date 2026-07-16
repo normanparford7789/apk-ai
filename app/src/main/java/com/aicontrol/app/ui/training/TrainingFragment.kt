@@ -121,9 +121,13 @@ class TrainingFragment : Fragment() {
         btnClose.setOnClickListener { chatDialog?.dismiss() }
 
         btnSend.setOnClickListener { sendChatMessage() }
-        chatInput?.setOnEditorActionListener { _, _ ->
-            sendChatMessage()
-            true
+        chatInput?.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                sendChatMessage()
+                true
+            } else {
+                false
+            }
         }
 
         btnSave.setOnClickListener { saveTaskFromChat() }
@@ -135,7 +139,7 @@ class TrainingFragment : Fragment() {
         val msg = chatInput?.text?.toString()?.trim() ?: ""
         if (msg.isEmpty()) return
 
-        chatInput?.text = ""
+        chatInput?.setText("")
         addChatBubble(msg, isUser = true)
         setChatLoading(true)
 
