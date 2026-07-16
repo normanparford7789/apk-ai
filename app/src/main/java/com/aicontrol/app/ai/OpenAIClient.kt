@@ -23,8 +23,8 @@ interface OpenAIApiService {
 
 object OpenAIClient {
 
-    // HuggingFace Inference API (OpenAI-compatible) — default
-    const val BASE_URL_HUGGINGFACE = "https://api-inference.huggingface.co/"
+    // HuggingFace OpenAI-compatible Inference Router — supports /v1/chat/completions
+    const val BASE_URL_HUGGINGFACE = "https://router.huggingface.co/"
     const val BASE_URL_OPENAI      = "https://api.openai.com/"
 
     fun create(baseUrl: String = BASE_URL_HUGGINGFACE): OpenAIApiService {
@@ -33,9 +33,10 @@ object OpenAIClient {
         }
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
-            .connectTimeout(90, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
 
         return Retrofit.Builder()

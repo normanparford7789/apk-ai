@@ -11,6 +11,7 @@ import com.aicontrol.app.utils.PreferencesManager
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 
 class AIController(private val context: Context) {
 
@@ -143,23 +144,42 @@ class AIController(private val context: Context) {
                     temperature = 0.1
                 )
 
-                val response = apiService.chatCompletion(
-                    authorization = "Bearer $apiKey",
-                    request = request
-                )
+                var lastError: String? = null
+                repeat(MAX_RETRIES) { attempt ->
+                    try {
+                        val response = apiService.chatCompletion(
+                            authorization = "Bearer $apiKey",
+                            request = request
+                        )
 
-                if (response.isSuccessful) {
-                    val content = response.body()?.choices?.firstOrNull()?.message?.content ?: ""
-                    parseAIResponse(content)
-                } else {
-                    val errorBody = response.errorBody()?.string() ?: "Unknown error"
-                    AIAnalysisResult(
-                        success = false,
-                        action = null,
-                        rawResponse = errorBody,
-                        errorMessage = "خطأ API: ${response.code()} - $errorBody"
-                    )
+                        if (response.isSuccessful) {
+                            val content = response.body()?.choices?.firstOrNull()?.message?.content ?: ""
+                            return@withContext parseAIResponse(content)
+                        } else {
+                            val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                            if (response.code() in 400..499 && response.code() != 429) {
+                                return@withContext AIAnalysisResult(
+                                    success = false,
+                                    action = null,
+                                    rawResponse = errorBody,
+                                    errorMessage = "خطأ API: ${response.code()} - $errorBody"
+                                )
+                            }
+                            lastError = "خطأ API: ${response.code()} - $errorBody"
+                        }
+                    } catch (e: IOException) {
+                        Log.w(TAG, "Network error on attempt ${attempt + 1}", e)
+                        lastError = "خطأ شبكة: ${e.message}"
+                    }
+                    if (attempt < MAX_RETRIES - 1) delay(RETRY_DELAY_MS)
                 }
+
+                AIAnalysisResult(
+                    success = false,
+                    action = null,
+                    rawResponse = "",
+                    errorMessage = lastError ?: "فشل الاتصال بعد عدة محاولات"
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error analyzing screen", e)
                 AIAnalysisResult(success = false, action = null, rawResponse = "", errorMessage = e.message)
@@ -251,17 +271,19 @@ class AIController(private val context: Context) {
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
         val out = ByteArrayOutputStream()
-        val maxSide = 1280
+        val maxSide = 768
         val scaled = if (bitmap.width > maxSide || bitmap.height > maxSide) {
             val ratio = minOf(maxSide.toFloat() / bitmap.width, maxSide.toFloat() / bitmap.height)
             Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
         } else bitmap
-        scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
     companion object {
         private const val TAG = "AIController"
+        private const val MAX_RETRIES = 3
+        private const val RETRY_DELAY_MS = 2000L
     }
 }
 
