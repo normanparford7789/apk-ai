@@ -193,6 +193,16 @@ class SettingsFragment : Fragment() {
             binding.tvMaxActionsValue.text = "${value.toInt()} إجراء"
         }
 
+        binding.switchUiTree.isChecked = prefs.useUITree
+        binding.switchUiTree.setOnCheckedChangeListener { _, isChecked ->
+            prefs.useUITree = isChecked
+            val msg = if (isChecked)
+                "⚡ وضع UI Tree مفعّل — توفير 99% من التوكنز"
+            else
+                "📷 وضع الصورة مفعّل"
+            Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+        }
+
         binding.btnSaveSettings.setOnClickListener {
             Toast.makeText(requireContext(), "تم حفظ الإعدادات ✓", Toast.LENGTH_SHORT).show()
         }

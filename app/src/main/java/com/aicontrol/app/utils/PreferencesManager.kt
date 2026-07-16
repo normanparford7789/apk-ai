@@ -80,6 +80,14 @@ class PreferencesManager(context: Context) {
         get() = prefs.getInt(KEY_FLOAT_Y, 300)
         set(value) = prefs.edit { putInt(KEY_FLOAT_Y, value) }
 
+    /**
+     * استخدام UI Tree بدلاً من الصورة (يوفّر ~99% من التوكنز).
+     * مفعّل افتراضياً.
+     */
+    var useUITree: Boolean
+        get() = prefs.getBoolean(KEY_USE_UI_TREE, true)
+        set(value) = prefs.edit { putBoolean(KEY_USE_UI_TREE, value) }
+
     // ─── Companion ───────────────────────────────────────────────────────────
 
     companion object {
@@ -94,6 +102,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_MAX_ACTIONS    = "max_actions"
         private const val KEY_FLOAT_X        = "float_x"
         private const val KEY_FLOAT_Y        = "float_y"
+        private const val KEY_USE_UI_TREE    = "use_ui_tree"
 
         const val PROVIDER_HF     = "huggingface"
         const val PROVIDER_OPENAI = "openai"

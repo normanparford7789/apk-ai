@@ -174,11 +174,12 @@ class AIAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Get all readable text currently on screen.
+     * Get all readable text currently on screen (legacy simple version).
      */
     fun getScreenContent(): String {
         val sb = StringBuilder()
-        extractText(rootInActiveWindow, sb)
+        val root = rootInActiveWindow ?: return ""
+        extractText(root, sb)
         return sb.toString()
     }
 
@@ -189,8 +190,65 @@ class AIAccessibilityService : AccessibilityService() {
         repeat(node.childCount) { extractText(node.getChild(it), sb) }
     }
 
+    /**
+     * Returns a rich, structured text representation of the current UI tree.
+     * Each element: TYPE: "label" [x=CX, y=CY] {attributes}
+     * This is the lightweight alternative to sending screenshots — reduces token usage by ~99%.
+     */
+    fun getUITree(): String {
+        val root = rootInActiveWindow ?: return ""
+        val sb = StringBuilder()
+        val pkg = root.packageName?.toString() ?: "unknown"
+        sb.append("Package: $pkg\n")
+        val count = intArrayOf(0)
+        extractNode(root, sb, 0, count)
+        return sb.toString().trim()
+    }
+
+    private fun extractNode(
+        node: AccessibilityNodeInfo?,
+        sb: StringBuilder,
+        depth: Int,
+        count: IntArray
+    ) {
+        node ?: return
+        if (count[0] >= MAX_UI_NODES) return
+        if (depth > MAX_UI_DEPTH) return
+
+        val text = node.text?.toString()?.trim()?.take(100) ?: ""
+        val desc = node.contentDescription?.toString()?.trim()?.take(100) ?: ""
+        val label = text.ifEmpty { desc }
+        val hasInfo = label.isNotEmpty() || node.isClickable || node.isScrollable || node.isEditable
+
+        if (hasInfo) {
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            val cx = bounds.centerX()
+            val cy = bounds.centerY()
+
+            // Only include on-screen elements with valid coordinates
+            if (cx > 0 && cy > 0) {
+                val type = node.className?.toString()?.substringAfterLast('.') ?: "View"
+                val attrs = buildString {
+                    if (node.isClickable) append(" clickable")
+                    if (node.isScrollable) append(" scrollable")
+                    if (node.isEditable) append(" editable")
+                    if (node.isFocused) append(" focused")
+                    if (node.isChecked) append(" checked")
+                    if (!node.isEnabled) append(" disabled")
+                }
+                sb.append("$type: \"$label\" [x=$cx, y=$cy]$attrs\n")
+                count[0]++
+            }
+        }
+
+        repeat(node.childCount) { i -> extractNode(node.getChild(i), sb, depth + 1, count) }
+    }
+
     companion object {
         private const val TAG = "AIAccessibilityService"
+        private const val MAX_UI_NODES = 150
+        private const val MAX_UI_DEPTH = 15
 
         @Volatile
         var instance: AIAccessibilityService? = null

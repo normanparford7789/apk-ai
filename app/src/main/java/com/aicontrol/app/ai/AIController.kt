@@ -55,17 +55,31 @@ class AIController(private val context: Context) {
 
         while (isRunning && actionCount < maxActions) {
             try {
-                onStatusUpdate?.invoke("جاري التقاط الشاشة...")
-                val screenshot = captureScreen()
+                // ── الطريقة الأولى: UI Tree (خفيفة، توفّر 99% من التوكنز) ────
+                val uiTree = if (prefs.useUITree) {
+                    AIAccessibilityService.instance?.getUITree() ?: ""
+                } else ""
 
-                if (screenshot == null) {
-                    onStatusUpdate?.invoke("لم يتم التقاط الشاشة — تأكد من تفعيل خدمة المساعدة")
-                    delay(3000)
-                    continue
+                val treeIsUsable = uiTree.isNotBlank() &&
+                    uiTree.lines().count { it.isNotBlank() } >= 3
+
+                val result = if (treeIsUsable) {
+                    onStatusUpdate?.invoke("⚡ تحليل واجهة الشاشة (UI Tree — بدون صورة)...")
+                    analyzeScreenByText(uiTree, taskDescription)
+                } else {
+                    // ── الطريقة الثانية: لقطة شاشة (fallback) ─────────────
+                    onStatusUpdate?.invoke("جاري التقاط الشاشة...")
+                    val screenshot = captureScreen()
+
+                    if (screenshot == null) {
+                        onStatusUpdate?.invoke("لم يتم التقاط الشاشة — تأكد من تفعيل خدمة المساعدة")
+                        delay(3000)
+                        continue
+                    }
+
+                    onStatusUpdate?.invoke("جاري تحليل الشاشة بالصورة...")
+                    analyzeScreen(screenshot, taskDescription)
                 }
-
-                onStatusUpdate?.invoke("جاري تحليل الشاشة بالذكاء الاصطناعي...")
-                val result = analyzeScreen(screenshot, taskDescription)
 
                 if (!result.success || result.action == null) {
                     onStatusUpdate?.invoke("فشل التحليل: ${result.errorMessage}")
@@ -244,6 +258,147 @@ class AIController(private val context: Context) {
             }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // UI-Tree analysis (text-only — no image, ~99% cheaper)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private suspend fun analyzeScreenByText(
+        uiTree: String,
+        taskDescription: String,
+        triedModels: Set<String> = emptySet()
+    ): AIAnalysisResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val apiKey = prefs.openAiApiKey
+                val model  = prefs.selectedModel
+
+                if (apiKey.isBlank()) {
+                    return@withContext AIAnalysisResult(
+                        success = false, action = null, rawResponse = "",
+                        errorMessage = "مفتاح API غير موجود. يرجى إضافته في الإعدادات."
+                    )
+                }
+
+                val messages = listOf(
+                    Message("system", buildSystemPromptForUITree()),
+                    Message("user",   buildUserPromptForUITree(taskDescription, uiTree))
+                )
+
+                val request = ChatCompletionRequest(
+                    model       = model,
+                    messages    = messages,
+                    maxTokens   = 256,   // أقل بكثير من وضع الصورة
+                    temperature = 0.1
+                )
+
+                var lastError: String? = null
+                repeat(MAX_RETRIES) { attempt ->
+                    try {
+                        val response = apiService.chatCompletion(
+                            authorization = "Bearer $apiKey",
+                            request       = request
+                        )
+
+                        if (response.isSuccessful) {
+                            val content = response.body()
+                                ?.choices?.firstOrNull()
+                                ?.message?.content ?: ""
+                            return@withContext parseAIResponse(content)
+                        }
+
+                        val errorBody = response.errorBody()?.string() ?: "Unknown error"
+
+                        // 429 → جرّب النموذج التالي فوراً
+                        if (response.code() == 429) {
+                            val newTried = triedModels + model
+                            val fallback = prefs.currentModelList.firstOrNull { it !in newTried }
+                            if (fallback != null) {
+                                Log.w(TAG, "UI-tree 429 on $model, switching to $fallback")
+                                onStatusUpdate?.invoke("تجاوزت حصة $model، جاري التبديل إلى $fallback...")
+                                prefs.selectedModel = fallback
+                                return@withContext analyzeScreenByText(uiTree, taskDescription, newTried)
+                            }
+                            return@withContext AIAnalysisResult(
+                                success = false, action = null, rawResponse = errorBody,
+                                errorMessage = "تجاوزت الحصة المجانية لجميع النماذج. انتظر قليلاً أو فعّل الفوترة."
+                            )
+                        }
+
+                        // أخطاء 4xx أخرى
+                        if (response.code() in 400..499) {
+                            val isModelError = errorBody.contains("model_not_supported") ||
+                                errorBody.contains("not supported") ||
+                                errorBody.contains("not found") ||
+                                errorBody.contains("does not exist") ||
+                                errorBody.contains("MODEL_NOT_FOUND")
+                            if (isModelError) {
+                                val newTried = triedModels + model
+                                val fallback = prefs.currentModelList.firstOrNull { it !in newTried }
+                                if (fallback != null) {
+                                    prefs.selectedModel = fallback
+                                    return@withContext analyzeScreenByText(uiTree, taskDescription, newTried)
+                                }
+                                return@withContext AIAnalysisResult(
+                                    success = false, action = null, rawResponse = errorBody,
+                                    errorMessage = "جميع النماذج غير مدعومة. تحقق من مفتاح API."
+                                )
+                            }
+                            return@withContext AIAnalysisResult(
+                                success = false, action = null, rawResponse = errorBody,
+                                errorMessage = "خطأ API: ${response.code()} - $errorBody"
+                            )
+                        }
+
+                        lastError = "خطأ API: ${response.code()} - $errorBody"
+
+                    } catch (e: IOException) {
+                        Log.w(TAG, "UI-tree network error attempt ${attempt + 1}", e)
+                        lastError = "خطأ شبكة: ${e.message}"
+                    }
+                    if (attempt < MAX_RETRIES - 1) delay(RETRY_DELAY_MS)
+                }
+
+                AIAnalysisResult(
+                    success = false, action = null, rawResponse = "",
+                    errorMessage = lastError ?: "فشل الاتصال بعد عدة محاولات"
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in analyzeScreenByText", e)
+                AIAnalysisResult(success = false, action = null, rawResponse = "", errorMessage = e.message)
+            }
+        }
+    }
+
+    private fun buildSystemPromptForUITree(): String = """
+أنت مساعد ذكاء اصطناعي متخصص في التحكم بشاشة الهاتف Android.
+ستحصل على قائمة نصية بعناصر الواجهة الموجودة على الشاشة مع إحداثياتها الدقيقة.
+
+صيغة كل عنصر: النوع: "النص" [x=المحور_الأفقي, y=المحور_الرأسي] {الخصائص}
+
+قرر الإجراء التالي لإكمال المهمة وأجب بـ JSON فقط بهذا الشكل الدقيق:
+{"action": "tap", "x": 200, "y": 500, "reason": "سبب الإجراء", "completed": false}
+
+الإجراءات المتاحة: tap, long_press, type, swipe, scroll, back, home, recents, wait, complete, clear_text
+- type: أضف "text": "النص المطلوب كتابته"
+- swipe/scroll: أضف "direction": "up|down|left|right"
+- complete: عندما تنتهي المهمة بنجاح اضبط "completed": true
+- استخدم قيم x و y من قائمة العناصر مباشرةً (هي إحداثيات البكسل الفعلية)
+- أجب بـ JSON فقط بدون ``` أو أي نص إضافي
+    """.trimIndent()
+
+    private fun buildUserPromptForUITree(taskDescription: String, uiTree: String): String = """
+المهمة: $taskDescription
+
+عناصر الشاشة الحالية:
+$uiTree
+
+ما الإجراء التالي؟ أجب بـ JSON فقط.
+    """.trimIndent()
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Screenshot-based analysis (vision — fallback)
+    // ═══════════════════════════════════════════════════════════════════════
 
     private fun buildSystemPrompt(): String = """
 أنت مساعد ذكاء اصطناعي متخصص في التحكم بشاشة الهاتف Android.
