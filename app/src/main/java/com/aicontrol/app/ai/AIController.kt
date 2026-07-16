@@ -158,6 +158,11 @@ class AIController(private val context: Context) {
                         } else {
                             val errorBody = response.errorBody()?.string() ?: "Unknown error"
                             if (response.code() in 400..499 && response.code() != 429) {
+                                if (errorBody.contains("model_not_supported") && model != prefs.defaultModel) {
+                                    Log.w(TAG, "Model $model not supported, falling back to ${prefs.defaultModel}")
+                                    prefs.selectedModel = prefs.defaultModel
+                                    return@withContext analyzeScreen(bitmap, taskDescription)
+                                }
                                 return@withContext AIAnalysisResult(
                                     success = false,
                                     action = null,

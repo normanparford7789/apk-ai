@@ -33,6 +33,9 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(KEY_SELECTED_MODEL, DEFAULT_MODEL_HF) ?: DEFAULT_MODEL_HF
         set(value) = prefs.edit { putString(KEY_SELECTED_MODEL, value) }
 
+    val defaultModel: String
+        get() = DEFAULT_MODEL_HF
+
     // ─── Task ────────────────────────────────────────────────────────────────
 
     var activeTaskId: Long
@@ -82,12 +85,16 @@ class PreferencesManager(context: Context) {
         const val PROVIDER_OPENAI = "openai"
 
         // أفضل نماذج HuggingFace المجانية للرؤية
-        const val DEFAULT_MODEL_HF = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+        const val DEFAULT_MODEL_HF = "Qwen/Qwen3-VL-8B-Instruct"
 
         val MODELS_HF = arrayOf(
-            "meta-llama/Llama-3.2-11B-Vision-Instruct",
+            "Qwen/Qwen3-VL-8B-Instruct",
+            "Qwen/Qwen3-VL-4B-Instruct",
+            "Qwen/Qwen3-VL-2B-Instruct",
             "Qwen/Qwen2.5-VL-7B-Instruct",
-            "microsoft/Phi-3.5-vision-instruct"
+            "google/gemma-3-4b-it",
+            "google/gemma-3-12b-it",
+            "meta-llama/Llama-4-Scout-17B-16E-Instruct"
         )
         val MODELS_OPENAI = arrayOf(
             "gpt-4o",
