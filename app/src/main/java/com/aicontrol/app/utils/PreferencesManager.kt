@@ -84,17 +84,18 @@ class PreferencesManager(context: Context) {
         const val PROVIDER_HF     = "huggingface"
         const val PROVIDER_OPENAI = "openai"
 
-        // أفضل نماذج HuggingFace المجانية للرؤية
-        const val DEFAULT_MODEL_HF = "Qwen/Qwen3-VL-8B-Instruct"
+        // النموذج الافتراضي: Qwen2.5-VL-7B مدعوم بشكل موثوق على HuggingFace Router
+        const val DEFAULT_MODEL_HF = "Qwen/Qwen2.5-VL-7B-Instruct"
 
         val MODELS_HF = arrayOf(
-            "Qwen/Qwen3-VL-8B-Instruct",
-            "Qwen/Qwen3-VL-4B-Instruct",
-            "Qwen/Qwen3-VL-2B-Instruct",
-            "Qwen/Qwen2.5-VL-7B-Instruct",
-            "google/gemma-3-4b-it",
+            "Qwen/Qwen2.5-VL-7B-Instruct",      // مستقر ومدعوم - الافتراضي
+            "Qwen/Qwen2.5-VL-3B-Instruct",      // أخف وأسرع
+            "meta-llama/Llama-4-Scout-17B-16E-Instruct",
             "google/gemma-3-12b-it",
-            "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+            "google/gemma-3-4b-it",
+            "Qwen/Qwen3-VL-8B-Instruct",        // قد لا يكون متاحاً على بعض المزودين
+            "Qwen/Qwen3-VL-4B-Instruct",
+            "Qwen/Qwen3-VL-2B-Instruct"
         )
         val MODELS_OPENAI = arrayOf(
             "gpt-4o",

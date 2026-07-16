@@ -2,8 +2,11 @@ package com.aicontrol.app.ai
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Base64
+import android.util.DisplayMetrics
 import android.util.Log
+import android.view.WindowManager
 import com.aicontrol.app.ai.models.*
 import com.aicontrol.app.services.AIAccessibilityService
 import com.aicontrol.app.services.ScreenCaptureService
@@ -113,7 +116,11 @@ class AIController(private val context: Context) {
         }
     }
 
-    private suspend fun analyzeScreen(bitmap: Bitmap, taskDescription: String): AIAnalysisResult {
+    private suspend fun analyzeScreen(
+        bitmap: Bitmap,
+        taskDescription: String,
+        triedModels: Set<String> = emptySet()
+    ): AIAnalysisResult {
         return withContext(Dispatchers.IO) {
             try {
                 val base64Image = bitmapToBase64(bitmap)
@@ -158,10 +165,25 @@ class AIController(private val context: Context) {
                         } else {
                             val errorBody = response.errorBody()?.string() ?: "Unknown error"
                             if (response.code() in 400..499 && response.code() != 429) {
-                                if (errorBody.contains("model_not_supported") && model != prefs.defaultModel) {
-                                    Log.w(TAG, "Model $model not supported, falling back to ${prefs.defaultModel}")
-                                    prefs.selectedModel = prefs.defaultModel
-                                    return@withContext analyzeScreen(bitmap, taskDescription)
+                                if (errorBody.contains("model_not_supported") ||
+                                    errorBody.contains("not supported") ||
+                                    errorBody.contains("not found") ||
+                                    errorBody.contains("does not exist")) {
+                                    // النموذج الحالي غير مدعوم — جرّب النموذج التالي في القائمة
+                                    val newTried = triedModels + model
+                                    val fallback = PreferencesManager.MODELS_HF
+                                        .firstOrNull { it !in newTried }
+                                    if (fallback != null) {
+                                        Log.w(TAG, "Model $model not supported, trying $fallback")
+                                        prefs.selectedModel = fallback
+                                        return@withContext analyzeScreen(bitmap, taskDescription, newTried)
+                                    }
+                                    return@withContext AIAnalysisResult(
+                                        success = false,
+                                        action = null,
+                                        rawResponse = errorBody,
+                                        errorMessage = "جميع النماذج المتاحة غير مدعومة. تحقق من مفتاح API."
+                                    )
                                 }
                                 return@withContext AIAnalysisResult(
                                     success = false,
@@ -197,11 +219,13 @@ class AIController(private val context: Context) {
 تقوم بتحليل لقطات الشاشة وتقرر الإجراء التالي لإكمال المهمة.
 
 قواعد مهمة:
-1. أعطِ دائماً إجابة بتنسيق JSON صحيح فقط، بدون أي نص إضافي
-2. حدد الإحداثيات بدقة بناءً على العناصر المرئية في الشاشة
-3. إذا اكتملت المهمة، اضبط "completed" على true
+1. أعطِ دائماً إجابة بتنسيق JSON صحيح فقط، بدون أي نص إضافي قبل أو بعد JSON
+2. يجب أن تكون قيم x وy أعداداً صحيحة تمثل إحداثيات البكسل الفعلية على الشاشة (مثل: "x": 540، "y": 960)
+   لا تستخدم أبداً أعداداً عشرية أو قيماً مُعيَّرة بين 0.0 و1.0
+3. حدد الإحداثيات بدقة بناءً على العناصر المرئية في الشاشة
+4. إذا اكتملت المهمة، اضبط "completed" على true
 
-تنسيق الإجابة (JSON فقط):
+تنسيق الإجابة (JSON فقط بدون ``` أو أي علامات إضافية):
 {
   "action": "tap|long_press|type|swipe|scroll|back|home|wait|complete|clear_text",
   "x": 540,
@@ -218,7 +242,7 @@ class AIController(private val context: Context) {
 المهمة المطلوبة: $taskDescription
 
 انظر إلى لقطة الشاشة الحالية وقرر الإجراء التالي لإتمام المهمة.
-أعطِ إجابة JSON فقط.
+أعطِ إجابة JSON فقط بدون أي نص إضافي.
     """.trimIndent()
 
     private fun parseAIResponse(content: String): AIAnalysisResult {
@@ -237,29 +261,70 @@ class AIController(private val context: Context) {
         }
     }
 
+    /**
+     * استخراج JSON من نص الاستجابة مع دعم كتل ``` ` و ```json
+     */
     private fun extractJson(text: String): String {
-        val start = text.indexOf('{')
-        val end = text.lastIndexOf('}')
-        return if (start != -1 && end != -1 && end > start) text.substring(start, end + 1) else text
+        // إزالة كتل markdown مثل ```json ... ``` أو ``` ... ```
+        val cleaned = text
+            .replace(Regex("```json\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("```\\s*"), "")
+            .trim()
+
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
+        return if (start != -1 && end != -1 && end > start)
+            cleaned.substring(start, end + 1)
+        else
+            cleaned
+    }
+
+    /**
+     * الحصول على أبعاد الشاشة الفعلية بالبكسل
+     */
+    @Suppress("DEPRECATION")
+    private fun getScreenSize(): Pair<Int, Int> {
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            val dm = DisplayMetrics()
+            wm.defaultDisplay.getRealMetrics(dm)
+            dm.widthPixels to dm.heightPixels
+        }
     }
 
     private suspend fun executeAction(action: AIAction) {
         val service = AIAccessibilityService.instance ?: return
+        val (screenW, screenH) = getScreenSize()
+
+        /**
+         * تحويل إحداثي إلى بكسل:
+         * إذا كانت القيمة بين 0.0 و1.0 (مُعيَّرة) تُضرب في حجم الشاشة
+         * وإلا تُستخدم كما هي (قيمة بكسل مباشرة)
+         */
+        fun Double.toPixelX(): Float =
+            if (this in 0.0..1.0) (this * screenW).toFloat() else this.toFloat()
+
+        fun Double.toPixelY(): Float =
+            if (this in 0.0..1.0) (this * screenH).toFloat() else this.toFloat()
+
         when (action.action) {
             AIAction.ACTION_TAP -> {
-                val x = action.x?.toFloat() ?: return
-                val y = action.y?.toFloat() ?: return
+                val x = action.x?.toPixelX() ?: return
+                val y = action.y?.toPixelY() ?: return
                 service.performTap(x, y)
             }
             AIAction.ACTION_LONG_PRESS -> {
-                val x = action.x?.toFloat() ?: return
-                val y = action.y?.toFloat() ?: return
+                val x = action.x?.toPixelX() ?: return
+                val y = action.y?.toPixelY() ?: return
                 service.performLongPress(x, y)
             }
             AIAction.ACTION_TYPE -> action.text?.let { service.typeText(it) }
             AIAction.ACTION_SWIPE -> {
-                val x = action.x?.toFloat() ?: return
-                val y = action.y?.toFloat() ?: return
+                val x = action.x?.toPixelX() ?: return
+                val y = action.y?.toPixelY() ?: return
                 service.performSwipe(x, y, action.direction ?: "up")
             }
             AIAction.ACTION_SCROLL -> service.performScroll(action.direction ?: "down")
