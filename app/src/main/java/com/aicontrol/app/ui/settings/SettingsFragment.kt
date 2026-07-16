@@ -82,7 +82,7 @@ class SettingsFragment : Fragment() {
             PreferencesManager.PROVIDER_GEMINI -> {
                 binding.tvApiKeyLabel.text = "🔑 مفتاح Google Gemini API"
                 binding.tvApiKeyHint.text = "احصل على مفتاحك المجاني من: aistudio.google.com → Get API Key"
-                binding.etApiKey.hint = "AIza..."
+                binding.etApiKey.hint = "AIza... أو AQ...."
             }
         }
     }
@@ -145,8 +145,8 @@ class SettingsFragment : Fragment() {
                     else null
                 }
                 PreferencesManager.PROVIDER_GEMINI -> {
-                    if (!key.startsWith("AIza"))
-                        "مفتاح Google Gemini يجب أن يبدأ بـ AIza"
+                    if (!key.startsWith("AIza") && !key.startsWith("AQ."))
+                        "مفتاح Google Gemini غير صالح"
                     else null
                 }
                 else -> null
