@@ -1,18 +1,28 @@
 package com.aicontrol.app.ui.training
 
+import android.app.AlertDialog
+import android.graphics.Color
 import android.os.Bundle
 import android.view.*
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.aicontrol.app.R
+import com.aicontrol.app.ai.ChatController
 import com.aicontrol.app.data.TrainingRepository
 import com.aicontrol.app.data.TrainingTask
 import com.aicontrol.app.databinding.FragmentTrainingBinding
 import com.aicontrol.app.databinding.DialogAddTaskBinding
 import com.aicontrol.app.utils.PreferencesManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TrainingFragment : Fragment() {
 
@@ -21,6 +31,13 @@ class TrainingFragment : Fragment() {
     private lateinit var repository: TrainingRepository
     private lateinit var prefs: PreferencesManager
     private lateinit var adapter: TrainingAdapter
+    private var chatController: ChatController? = null
+
+    private var chatDialog: AlertDialog? = null
+    private var chatContainer: LinearLayout? = null
+    private var chatScrollView: ScrollView? = null
+    private var chatInput: EditText? = null
+    private var chatProgress: ProgressBar? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentTrainingBinding.inflate(inflater, container, false)
@@ -31,8 +48,9 @@ class TrainingFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         repository = TrainingRepository.getInstance(requireContext())
         prefs = PreferencesManager.getInstance(requireContext())
+        chatController = ChatController(requireContext())
         setupRecyclerView()
-        setupFab()
+        setupFabs()
         observeTasks()
     }
 
@@ -55,10 +73,9 @@ class TrainingFragment : Fragment() {
         binding.recyclerTasks.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(requireContext())
     }
 
-    private fun setupFab() {
-        binding.fabAddTask.setOnClickListener {
-            showAddDialog()
-        }
+    private fun setupFabs() {
+        binding.fabAddTask.setOnClickListener { showAddDialog() }
+        binding.fabChat.setOnClickListener { showChatDialog() }
     }
 
     private fun observeTasks() {
@@ -70,6 +87,135 @@ class TrainingFragment : Fragment() {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Chat Training Dialog
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private fun showChatDialog() {
+        chatController?.clearHistory()
+
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_chat_training, null)
+
+        chatContainer = dialogView.findViewById(R.id.chat_container)
+        chatScrollView = dialogView.findViewById(R.id.scroll_chat)
+        chatInput = dialogView.findViewById(R.id.et_chat_input)
+        chatProgress = dialogView.findViewById(R.id.progress_chat)
+        val btnSend = dialogView.findViewById<ImageButton>(R.id.btn_send)
+        val btnClose = dialogView.findViewById<ImageButton>(R.id.btn_close_chat)
+        val btnSave = dialogView.findViewById<TextView>(R.id.btn_save_task)
+
+        chatDialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .create()
+            .also {
+                it.setOnShowListener { _ ->
+                    it.window?.setLayout(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            }
+        chatDialog?.show()
+
+        btnClose.setOnClickListener { chatDialog?.dismiss() }
+
+        btnSend.setOnClickListener { sendChatMessage() }
+        chatInput?.setOnEditorActionListener { _, _ ->
+            sendChatMessage()
+            true
+        }
+
+        btnSave.setOnClickListener { saveTaskFromChat() }
+
+        addChatBubble("مرحباً! صِف لي ما تريد من الذكاء الاصطناعي أن يفعل. مثال: «بدي يقرا الأسئلة على الشاشة ويختار الجواب الصحيح»", isUser = false)
+    }
+
+    private fun sendChatMessage() {
+        val msg = chatInput?.text?.toString()?.trim() ?: ""
+        if (msg.isEmpty()) return
+
+        chatInput?.text = ""
+        addChatBubble(msg, isUser = true)
+        setChatLoading(true)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                chatController?.sendTrainingMessage(msg) ?: "خطأ"
+            }
+            addChatBubble(response, isUser = false)
+            setChatLoading(false)
+        }
+    }
+
+    private fun saveTaskFromChat() {
+        setChatLoading(true)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val extracted = withContext(Dispatchers.IO) {
+                chatController?.extractTaskFromConversation()
+            }
+
+            setChatLoading(false)
+
+            if (extracted == null) {
+                Toast.makeText(requireContext(), "تعذر استخراج المهمة من المحادثة", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            withContext(Dispatchers.Main) {
+                chatDialog?.dismiss()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    repository.insertTask(
+                        TrainingTask(
+                            title = extracted.title,
+                            description = extracted.description,
+                            category = "محادثة"
+                        )
+                    )
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(requireContext(), "تم حفظ المهمة: ${extracted.title}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addChatBubble(text: String, isUser: Boolean) {
+        val container = chatContainer ?: return
+        val inflater = LayoutInflater.from(requireContext())
+
+        val bubbleView = inflater.inflate(R.layout.chat_bubble_item, container, false)
+        val tvText = bubbleView.findViewById<TextView>(R.id.tv_bubble_text)
+
+        tvText.text = text
+        tvText.setBackgroundResource(
+            if (isUser) R.drawable.chat_bubble_user else R.drawable.chat_bubble_ai
+        )
+        tvText.setTextColor(if (isUser) Color.WHITE else Color.parseColor("#1A1A2E"))
+
+        val params = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = if (isUser) Gravity.END else Gravity.START
+            setMargins(0, 4, 0, 4)
+        }
+        bubbleView.layoutParams = params
+        container.addView(bubbleView)
+
+        chatScrollView?.post { chatScrollView?.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun setChatLoading(loading: Boolean) {
+        chatProgress?.visibility = if (loading) View.VISIBLE else View.GONE
+        chatInput?.isEnabled = !loading
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Manual add/edit
+    // ═══════════════════════════════════════════════════════════════════════
+
     private fun showAddDialog() {
         showTaskDialog(null)
     }
@@ -80,7 +226,7 @@ class TrainingFragment : Fragment() {
 
     private fun showTaskDialog(task: TrainingTask?) {
         val dialogBinding = DialogAddTaskBinding.inflate(LayoutInflater.from(requireContext()))
-        
+
         task?.let {
             dialogBinding.etTitle.setText(it.title)
             dialogBinding.etDescription.setText(it.description)
@@ -103,7 +249,7 @@ class TrainingFragment : Fragment() {
 
                 lifecycleScope.launch {
                     if (task == null) {
-                        val id = repository.insertTask(
+                        repository.insertTask(
                             TrainingTask(
                                 title = newTitle,
                                 description = description,
@@ -161,6 +307,7 @@ class TrainingFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        chatDialog?.dismiss()
         _binding = null
     }
 }

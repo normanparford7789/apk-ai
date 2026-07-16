@@ -17,12 +17,12 @@
             android:text="مهام التدريب"
             android:textSize="22sp"
             android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="4dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="أضف مهمة وصف فيها ما تريد الذكاء الاصطناعي أن يفعله"
+            android:text="تدرب مع الذكاء الاصطناعي بالحديث معه، أو أضف مهمة يدوياً"
             android:textSize="13sp"
             android:textColor="#888"
             android:layout_marginBottom="16dp" />
@@ -31,7 +31,7 @@
             android:id="@+id/tv_empty_state"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:text="لا توجد مهام بعد\nاضغط على + لإضافة مهمة جديدة"
+            android:text="لا توجد مهام بعد\nاضغط 💬 للتدرب بالمحادثة\nأو + لإضافة مهمة يدوياً"
             android:gravity="center"
             android:textSize="16sp"
             android:textColor="#888"
@@ -45,6 +45,18 @@
             android:paddingBottom="80dp" />
     </LinearLayout>
 
+    <!-- Chat FAB -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_chat"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="96dp"
+        android:layout_marginEnd="16dp"
+        android:contentDescription="محادثة تدريب"
+        app:srcCompat="@android:drawable/sym_action_chat" />
+
+    <!-- Add FAB -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab_add_task"
         android:layout_width="wrap_content"
