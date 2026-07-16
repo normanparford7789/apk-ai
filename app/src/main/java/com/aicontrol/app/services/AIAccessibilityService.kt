@@ -1,6 +1,8 @@
 package com.aicontrol.app.services
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.accessibilityservice.GestureDescription
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -8,10 +10,15 @@ import android.graphics.Bitmap
 import android.graphics.Path
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 
 class AIAccessibilityService : AccessibilityService() {
@@ -53,10 +60,11 @@ class AIAccessibilityService : AccessibilityService() {
         }
     }
 
-    @androidx.annotation.RequiresApi(Build.VERSION_CODES.R)
+    @RequiresApi(Build.VERSION_CODES.R)
     private suspend fun takeScreenshotSync(): Bitmap? = suspendCancellableCoroutine { cont ->
+        val mainExecutor = Executor { command -> Handler(Looper.getMainLooper()).post(command) }
         val callback = object : TakeScreenshotCallback {
-            override fun onSuccess(screenshot: android.hardware.display.Display.ScreenshotResult) {
+            override fun onSuccess(screenshot: ScreenshotResult) {
                 try {
                     val hardwareBuffer = screenshot.hardwareBuffer
                     val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
@@ -76,7 +84,7 @@ class AIAccessibilityService : AccessibilityService() {
                 if (cont.isActive) cont.resume(null)
             }
         }
-        takeScreenshot(callback)
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback)
         cont.invokeOnCancellation { /* nothing to cancel server-side */ }
     }
 
