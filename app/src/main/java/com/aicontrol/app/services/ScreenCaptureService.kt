@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -16,6 +17,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.aicontrol.app.App
 import com.aicontrol.app.MainActivity
 import com.aicontrol.app.R
@@ -31,7 +33,12 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            createNotification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        )
 
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: -1
         val data = intent?.getParcelableExtra<Intent>(EXTRA_DATA)

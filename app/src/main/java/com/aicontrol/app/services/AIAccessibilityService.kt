@@ -11,6 +11,8 @@ import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class AIAccessibilityService : AccessibilityService() {
 
@@ -35,10 +37,47 @@ class AIAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Capture screen using ScreenCaptureService (MediaProjection).
+     * Capture screen using the built-in AccessibilityService.takeScreenshot() (API 30+).
+     * Falls back to ScreenCaptureService (MediaProjection) on older devices.
      */
-    fun captureScreen(): Bitmap? {
-        return ScreenCaptureService.instance?.getLatestBitmap()
+    suspend fun captureScreen(): Bitmap? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                takeScreenshotSync()
+            } else {
+                ScreenCaptureService.instance?.getLatestBitmap()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "captureScreen failed", e)
+            ScreenCaptureService.instance?.getLatestBitmap()
+        }
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.R)
+    private suspend fun takeScreenshotSync(): Bitmap? = suspendCancellableCoroutine { cont ->
+        val callback = object : TakeScreenshotCallback {
+            override fun onSuccess(screenshot: android.hardware.display.Display.ScreenshotResult) {
+                try {
+                    val hardwareBuffer = screenshot.hardwareBuffer
+                    val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
+                    val swBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                    bitmap?.recycle()
+                    hardwareBuffer.close()
+                    screenshot.colorSpace?.close()
+                    if (cont.isActive) cont.resume(swBitmap)
+                } catch (e: Exception) {
+                    Log.e(TAG, "takeScreenshot onSuccess parse error", e)
+                    if (cont.isActive) cont.resume(null)
+                }
+            }
+
+            override fun onFailure(errorCode: Int) {
+                Log.e(TAG, "takeScreenshot failed, errorCode=$errorCode")
+                if (cont.isActive) cont.resume(null)
+            }
+        }
+        takeScreenshot(callback)
+        cont.invokeOnCancellation { /* nothing to cancel server-side */ }
     }
 
     /**

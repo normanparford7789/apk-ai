@@ -105,9 +105,10 @@ class AIController(private val context: Context) {
 
     private suspend fun captureScreen(): Bitmap? {
         return withContext(Dispatchers.IO) {
-            // Try ScreenCaptureService first (MediaProjection)
-            ScreenCaptureService.instance?.getLatestBitmap()
-                ?: AIAccessibilityService.instance?.captureScreen()
+            // Prefer the accessibility service's built-in takeScreenshot() (API 30+),
+            // fall back to MediaProjection via ScreenCaptureService.
+            AIAccessibilityService.instance?.captureScreen()
+                ?: ScreenCaptureService.instance?.getLatestBitmap()
         }
     }
 
