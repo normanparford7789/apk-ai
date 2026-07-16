@@ -254,7 +254,7 @@ class FloatingButtonService : Service() {
             val msg = v.text.toString().trim()
             if (msg.isNotEmpty()) {
                 sendChatMessage(msg)
-                v.text.clear()
+                v.text = ""
             }
             true
         }
