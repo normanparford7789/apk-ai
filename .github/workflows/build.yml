@@ -38,6 +38,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # ── Debug APK ──────────────────────────────────────────────────────────
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
@@ -48,12 +49,27 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Build Release APK (unsigned)
+      # ── Release APK (auto-signed with generated keystore) ─────────────────
+      - name: Generate signing keystore
+        run: |
+          keytool -genkey -v \
+            -keystore app/ai-control-release.jks \
+            -alias ai-control \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass aicontrol123 -keypass aicontrol123 \
+            -dname "CN=AI Control, OU=App, O=AIControl, L=City, S=State, C=US"
+
+      - name: Build Signed Release APK
         run: ./gradlew assembleRelease --stacktrace
+        env:
+          SIGNING_KEY_ALIAS: ai-control
+          SIGNING_KEY_PASSWORD: aicontrol123
+          SIGNING_STORE_FILE: ai-control-release.jks
+          SIGNING_STORE_PASSWORD: aicontrol123
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: AI-Control-Release-APK
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 30

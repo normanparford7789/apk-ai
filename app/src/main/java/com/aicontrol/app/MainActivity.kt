@@ -10,14 +10,12 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.navigation.findNavController
+import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.NavigationUI
 import com.aicontrol.app.databinding.ActivityMainBinding
 import com.aicontrol.app.services.FloatingButtonService
 import com.aicontrol.app.utils.PermissionHelper
-import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,8 +29,16 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermission()
     }
 
+    // ─── Navigation ─────────────────────────────────────────────────────────
+    // Must use NavHostFragment.navController when the host is inside FragmentContainerView
+    // Using findNavController(viewId) directly in onCreate() throws IllegalStateException.
+
+    private fun getNavController() =
+        (supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment)
+            .navController
+
     private fun setupNavigation() {
-        val navController = findNavController(R.id.nav_host_fragment)
+        val navController = getNavController()
         val appBarConfig = AppBarConfiguration(
             setOf(R.id.homeFragment, R.id.trainingFragment, R.id.historyFragment, R.id.settingsFragment)
         )
@@ -40,14 +46,10 @@ class MainActivity : AppCompatActivity() {
         NavigationUI.setupWithNavController(binding.bottomNav, navController)
     }
 
-    override fun onResume() {
-        super.onResume()
-        checkPermissionsOnResume()
-    }
+    override fun onSupportNavigateUp(): Boolean =
+        getNavController().navigateUp() || super.onSupportNavigateUp()
 
-    private fun checkPermissionsOnResume() {
-        // Notify fragments to update permission status
-    }
+    // ─── Permissions ─────────────────────────────────────────────────────────
 
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -63,11 +65,10 @@ class MainActivity : AppCompatActivity() {
                 .setTitle("إذن الطبقة العلوية")
                 .setMessage("يحتاج التطبيق إذن عرض النوافذ فوق التطبيقات الأخرى لعرض الأيقونة العائمة.")
                 .setPositiveButton("منح الإذن") { _, _ ->
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
+                    startActivityForResult(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+                        PermissionHelper.REQUEST_OVERLAY_PERMISSION
                     )
-                    startActivityForResult(intent, PermissionHelper.REQUEST_OVERLAY_PERMISSION)
                 }
                 .setNegativeButton("إلغاء", null)
                 .show()
@@ -77,7 +78,10 @@ class MainActivity : AppCompatActivity() {
     fun requestAccessibilityPermission() {
         AlertDialog.Builder(this)
             .setTitle("إذن خدمة المساعدة")
-            .setMessage("يحتاج التطبيق تفعيل خدمة المساعدة لكي يتمكن الذكاء الاصطناعي من قراءة الشاشة والتحكم بها.\n\nاذهب إلى الإعدادات > إمكانية الوصول > AI Control > فعّل الخدمة.")
+            .setMessage(
+                "يحتاج التطبيق تفعيل خدمة المساعدة لكي يتمكن الذكاء الاصطناعي من قراءة الشاشة والتحكم بها.\n\n" +
+                "اذهب إلى الإعدادات > إمكانية الوصول > AI Control > فعّل الخدمة."
+            )
             .setPositiveButton("فتح الإعدادات") { _, _ ->
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
@@ -85,17 +89,13 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // ─── Floating service ─────────────────────────────────────────────────────
+
     fun startFloatingService() {
-        if (!Settings.canDrawOverlays(this)) {
-            requestOverlayPermission()
-            return
-        }
-        if (!PermissionHelper.hasAccessibilityPermission(this)) {
-            requestAccessibilityPermission()
-            return
-        }
+        if (!Settings.canDrawOverlays(this)) { requestOverlayPermission(); return }
+        if (!PermissionHelper.hasAccessibilityPermission(this)) { requestAccessibilityPermission(); return }
         FloatingButtonService.start(this)
-        Toast.makeText(this, "تم تشغيل الأيقونة العائمة", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "تم تشغيل الأيقونة العائمة ✓", Toast.LENGTH_SHORT).show()
     }
 
     fun stopFloatingService() {
@@ -103,18 +103,12 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "تم إيقاف الأيقونة العائمة", Toast.LENGTH_SHORT).show()
     }
 
+    @Deprecated("Use registerForActivityResult instead")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
-        when (requestCode) {
-            PermissionHelper.REQUEST_OVERLAY_PERMISSION -> {
-                if (Settings.canDrawOverlays(this)) {
-                    Toast.makeText(this, "تم منح إذن الطبقة العلوية", Toast.LENGTH_SHORT).show()
-                }
-            }
+        if (requestCode == PermissionHelper.REQUEST_OVERLAY_PERMISSION && Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "تم منح إذن الطبقة العلوية ✓", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        return findNavController(R.id.nav_host_fragment).navigateUp() || super.onSupportNavigateUp()
     }
 }
