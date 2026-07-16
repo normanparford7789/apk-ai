@@ -19,11 +19,11 @@ android {
 
     signingConfigs {
         release {
-            def storeFile = System.getenv("SIGNING_STORE_FILE")
-            if (storeFile) {
-                keyAlias     System.getenv("SIGNING_KEY_ALIAS")
-                keyPassword  System.getenv("SIGNING_KEY_PASSWORD")
-                storeFile    file(storeFile)
+            def ksFile = System.getenv("SIGNING_STORE_FILE")
+            if (ksFile) {
+                keyAlias      System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword   System.getenv("SIGNING_KEY_PASSWORD")
+                storeFile     file(ksFile)
                 storePassword System.getenv("SIGNING_STORE_PASSWORD")
             }
         }
@@ -33,10 +33,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            def storeFile = System.getenv("SIGNING_STORE_FILE")
-            if (storeFile) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
         debug {
             debuggable true
