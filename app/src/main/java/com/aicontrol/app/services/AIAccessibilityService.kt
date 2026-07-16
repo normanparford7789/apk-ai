@@ -215,29 +215,38 @@ class AIAccessibilityService : AccessibilityService() {
         if (count[0] >= MAX_UI_NODES) return
         if (depth > MAX_UI_DEPTH) return
 
-        val text = node.text?.toString()?.trim()?.take(100) ?: ""
-        val desc = node.contentDescription?.toString()?.trim()?.take(100) ?: ""
+        val text = node.text?.toString()?.trim()?.take(60) ?: ""
+        val desc = node.contentDescription?.toString()?.trim()?.take(60) ?: ""
         val label = text.ifEmpty { desc }
-        val hasInfo = label.isNotEmpty() || node.isClickable || node.isScrollable || node.isEditable
 
-        if (hasInfo) {
+        val isActionable = node.isClickable || node.isLongClickable ||
+                           node.isScrollable || node.isEditable
+        val hasLabel = label.isNotEmpty()
+
+        // ✅ فقط العناصر التي يمكن التفاعل معها أو لها نص — تجاهل containers الفارغة
+        if (isActionable || hasLabel) {
             val bounds = android.graphics.Rect()
             node.getBoundsInScreen(bounds)
             val cx = bounds.centerX()
             val cy = bounds.centerY()
 
-            // Only include on-screen elements with valid coordinates
-            if (cx > 0 && cy > 0) {
-                val type = node.className?.toString()?.substringAfterLast('.') ?: "View"
-                val attrs = buildString {
-                    if (node.isClickable) append(" clickable")
-                    if (node.isScrollable) append(" scrollable")
-                    if (node.isEditable) append(" editable")
-                    if (node.isFocused) append(" focused")
-                    if (node.isChecked) append(" checked")
-                    if (!node.isEnabled) append(" disabled")
+            if (cx > 0 && cy > 0 && bounds.width() > 0 && bounds.height() > 0) {
+                // نوع مبسّط للحفاظ على أقل عدد ممكن من التوكنز
+                val type = when {
+                    node.isEditable                              -> "Input"
+                    node.isScrollable                           -> "Scroll"
+                    node.className?.contains("Button") == true  -> "Btn"
+                    node.className?.contains("Image") == true   -> "Img"
+                    node.className?.contains("Text") == true    -> "Txt"
+                    else                                        -> "View"
                 }
-                sb.append("$type: \"$label\" [x=$cx, y=$cy]$attrs\n")
+                val attrs = buildString {
+                    if (isActionable) append(" tap")
+                    if (node.isScrollable) append(" scroll")
+                    if (node.isEditable) append(" edit")
+                    if (node.isChecked) append(" ✓")
+                }
+                sb.append("$type:\"$label\"[$cx,$cy]$attrs\n")
                 count[0]++
             }
         }
@@ -247,8 +256,8 @@ class AIAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AIAccessibilityService"
-        private const val MAX_UI_NODES = 150
-        private const val MAX_UI_DEPTH = 15
+        private const val MAX_UI_NODES = 80   // تقليل الحد لعناصر أقل = توكنز أقل
+        private const val MAX_UI_DEPTH = 12
 
         @Volatile
         var instance: AIAccessibilityService? = null

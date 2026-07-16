@@ -24,6 +24,7 @@ class AIController(private val context: Context) {
     private var isRunning = false
     private var job: Job? = null
     private var actionCount = 0
+    private var lastUiTreeHash: Int = 0
 
     var onStatusUpdate: ((String) -> Unit)? = null
     var onActionExecuted: ((AIAction) -> Unit)? = null
@@ -49,13 +50,13 @@ class AIController(private val context: Context) {
 
     private suspend fun runAILoop(taskDescription: String) {
         val maxActions = prefs.maxActions
-        val actionDelay = prefs.actionDelay.toLong()
+        lastUiTreeHash = 0
 
         onStatusUpdate?.invoke("جاري تشغيل الذكاء الاصطناعي...")
 
         while (isRunning && actionCount < maxActions) {
             try {
-                // ── الطريقة الأولى: UI Tree (خفيفة، توفّر 99% من التوكنز) ────
+                // ── الطريقة الأولى: UI Tree ────────────────────────────────
                 val uiTree = if (prefs.useUITree) {
                     AIAccessibilityService.instance?.getUITree() ?: ""
                 } else ""
@@ -63,9 +64,45 @@ class AIController(private val context: Context) {
                 val treeIsUsable = uiTree.isNotBlank() &&
                     uiTree.lines().count { it.isNotBlank() } >= 3
 
-                val result = if (treeIsUsable) {
-                    onStatusUpdate?.invoke("⚡ تحليل واجهة الشاشة (UI Tree — بدون صورة)...")
-                    analyzeScreenByText(uiTree, taskDescription)
+                if (treeIsUsable) {
+                    // ✅ لا ترسل طلباً للذكاء إذا الشاشة لم تتغير
+                    val currentHash = uiTree.hashCode()
+                    if (currentHash == lastUiTreeHash) {
+                        onStatusUpdate?.invoke("⏳ انتظار تغيير الشاشة...")
+                        delay(400)
+                        continue
+                    }
+                    lastUiTreeHash = currentHash
+
+                    onStatusUpdate?.invoke("⚡ تحليل واجهة الشاشة...")
+                    val result = analyzeScreenByText(uiTree, taskDescription)
+
+                    if (!result.success || result.action == null) {
+                        onStatusUpdate?.invoke("فشل التحليل: ${result.errorMessage}")
+                        delay(1000)
+                        continue
+                    }
+
+                    val action = result.action
+                    onStatusUpdate?.invoke("الإجراء: ${action.reason}")
+                    onActionExecuted?.invoke(action)
+
+                    if (action.completed || action.action == AIAction.ACTION_COMPLETE) {
+                        withContext(Dispatchers.Main) {
+                            onCompleted?.invoke(true, "تم إكمال المهمة بنجاح!")
+                        }
+                        isRunning = false
+                        break
+                    }
+
+                    // نفّذ الأمر فوراً ثم أعد ضبط الـ hash
+                    lastUiTreeHash = 0
+                    executeAction(action)
+                    actionCount++
+
+                    // انتظر قصير لتحديث الشاشة فقط
+                    delay(action.waitMs.toLong().coerceIn(300L, 3000L))
+
                 } else {
                     // ── الطريقة الثانية: لقطة شاشة (fallback) ─────────────
                     onStatusUpdate?.invoke("جاري التقاط الشاشة...")
@@ -78,31 +115,30 @@ class AIController(private val context: Context) {
                     }
 
                     onStatusUpdate?.invoke("جاري تحليل الشاشة بالصورة...")
-                    analyzeScreen(screenshot, taskDescription)
-                }
+                    val result = analyzeScreen(screenshot, taskDescription)
 
-                if (!result.success || result.action == null) {
-                    onStatusUpdate?.invoke("فشل التحليل: ${result.errorMessage}")
-                    delay(2000)
-                    continue
-                }
-
-                val action = result.action
-                onStatusUpdate?.invoke("الإجراء: ${action.reason}")
-                onActionExecuted?.invoke(action)
-
-                if (action.completed || action.action == AIAction.ACTION_COMPLETE) {
-                    withContext(Dispatchers.Main) {
-                        onCompleted?.invoke(true, "تم إكمال المهمة بنجاح!")
+                    if (!result.success || result.action == null) {
+                        onStatusUpdate?.invoke("فشل التحليل: ${result.errorMessage}")
+                        delay(2000)
+                        continue
                     }
-                    isRunning = false
-                    break
+
+                    val action = result.action
+                    onStatusUpdate?.invoke("الإجراء: ${action.reason}")
+                    onActionExecuted?.invoke(action)
+
+                    if (action.completed || action.action == AIAction.ACTION_COMPLETE) {
+                        withContext(Dispatchers.Main) {
+                            onCompleted?.invoke(true, "تم إكمال المهمة بنجاح!")
+                        }
+                        isRunning = false
+                        break
+                    }
+
+                    executeAction(action)
+                    actionCount++
+                    delay(action.waitMs.toLong().coerceIn(800L, 5000L))
                 }
-
-                executeAction(action)
-                actionCount++
-
-                delay(action.waitMs.toLong().coerceAtLeast(actionDelay))
 
             } catch (e: CancellationException) {
                 break
@@ -288,7 +324,7 @@ class AIController(private val context: Context) {
                 val request = ChatCompletionRequest(
                     model       = model,
                     messages    = messages,
-                    maxTokens   = 256,   // أقل بكثير من وضع الصورة
+                    maxTokens   = 128,   // JSON بسيط لا يحتاج أكثر
                     temperature = 0.1
                 )
 
@@ -309,20 +345,14 @@ class AIController(private val context: Context) {
 
                         val errorBody = response.errorBody()?.string() ?: "Unknown error"
 
-                        // 429 → جرّب النموذج التالي فوراً
+                        // 429 → انتظر الوقت المحدد ثم أعد المحاولة
                         if (response.code() == 429) {
-                            val newTried = triedModels + model
-                            val fallback = prefs.currentModelList.firstOrNull { it !in newTried }
-                            if (fallback != null) {
-                                Log.w(TAG, "UI-tree 429 on $model, switching to $fallback")
-                                onStatusUpdate?.invoke("تجاوزت حصة $model، جاري التبديل إلى $fallback...")
-                                prefs.selectedModel = fallback
-                                return@withContext analyzeScreenByText(uiTree, taskDescription, newTried)
-                            }
-                            return@withContext AIAnalysisResult(
-                                success = false, action = null, rawResponse = errorBody,
-                                errorMessage = "تجاوزت الحصة المجانية لجميع النماذج. انتظر قليلاً أو فعّل الفوترة."
-                            )
+                            val waitSec = parseRetryAfter(errorBody).coerceIn(10L, 60L)
+                            Log.w(TAG, "UI-tree 429 on $model, waiting ${waitSec}s")
+                            onStatusUpdate?.invoke("⏳ rate limit — انتظار ${waitSec} ثانية...")
+                            delay(waitSec * 1000L)
+                            // أعد المحاولة مع نفس النموذج (لا تغيّر النموذج بسبب rate limit)
+                            return@withContext analyzeScreenByText(uiTree, taskDescription, triedModels)
                         }
 
                         // أخطاء 4xx أخرى
@@ -370,31 +400,15 @@ class AIController(private val context: Context) {
         }
     }
 
-    private fun buildSystemPromptForUITree(): String = """
-أنت مساعد ذكاء اصطناعي متخصص في التحكم بشاشة الهاتف Android.
-ستحصل على قائمة نصية بعناصر الواجهة الموجودة على الشاشة مع إحداثياتها الدقيقة.
+    private fun buildSystemPromptForUITree(): String =
+        "Android UI controller. Elements format: Type:"label"[x,y] attrs\n" +
+        "Reply JSON only, no markdown:\n" +
+        "{\"action\":\"tap\",\"x\":200,\"y\":500,\"reason\":\"why\",\"completed\":false}\n" +
+        "Actions: tap / long_press / type(+\"text\") / scroll(+\"direction\":up|down|left|right) / back / home / complete\n" +
+        "Use exact x,y from elements. completed:true when done."
 
-صيغة كل عنصر: النوع: "النص" [x=المحور_الأفقي, y=المحور_الرأسي] {الخصائص}
-
-قرر الإجراء التالي لإكمال المهمة وأجب بـ JSON فقط بهذا الشكل الدقيق:
-{"action": "tap", "x": 200, "y": 500, "reason": "سبب الإجراء", "completed": false}
-
-الإجراءات المتاحة: tap, long_press, type, swipe, scroll, back, home, recents, wait, complete, clear_text
-- type: أضف "text": "النص المطلوب كتابته"
-- swipe/scroll: أضف "direction": "up|down|left|right"
-- complete: عندما تنتهي المهمة بنجاح اضبط "completed": true
-- استخدم قيم x و y من قائمة العناصر مباشرةً (هي إحداثيات البكسل الفعلية)
-- أجب بـ JSON فقط بدون ``` أو أي نص إضافي
-    """.trimIndent()
-
-    private fun buildUserPromptForUITree(taskDescription: String, uiTree: String): String = """
-المهمة: $taskDescription
-
-عناصر الشاشة الحالية:
-$uiTree
-
-ما الإجراء التالي؟ أجب بـ JSON فقط.
-    """.trimIndent()
+    private fun buildUserPromptForUITree(taskDescription: String, uiTree: String): String =
+        "Task: $taskDescription\n\nScreen:\n$uiTree\n\nNext action JSON:"
 
     // ═══════════════════════════════════════════════════════════════════════
     // Screenshot-based analysis (vision — fallback)
@@ -536,10 +550,16 @@ $uiTree
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
+    /** استخراج وقت الانتظار من رسالة خطأ 429: "retry in 39s" → 39 */
+    private fun parseRetryAfter(errorBody: String): Long {
+        return Regex("""retry in (\d+)""", RegexOption.IGNORE_CASE)
+            .find(errorBody)?.groupValues?.get(1)?.toLongOrNull() ?: 15L
+    }
+
     companion object {
         private const val TAG = "AIController"
-        private const val MAX_RETRIES = 3
-        private const val RETRY_DELAY_MS = 2000L
+        private const val MAX_RETRIES = 2
+        private const val RETRY_DELAY_MS = 1000L
     }
 }
 
