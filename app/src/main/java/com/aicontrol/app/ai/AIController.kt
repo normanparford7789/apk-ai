@@ -167,8 +167,29 @@ class AIController(private val context: Context) {
                         } else {
                             val errorBody = response.errorBody()?.string() ?: "Unknown error"
 
-                            // أخطاء 4xx (ما عدا 429 = rate limit) لا فائدة من إعادة المحاولة
-                            if (response.code() in 400..499 && response.code() != 429) {
+                            // 429 = تجاوز الحصة → جرّب النموذج التالي فوراً
+                            if (response.code() == 429) {
+                                val modelList = prefs.currentModelList
+                                val newTried = triedModels + model
+                                val fallback = modelList.firstOrNull { it !in newTried }
+
+                                if (fallback != null) {
+                                    Log.w(TAG, "Quota exceeded for $model (429), switching to $fallback")
+                                    onStatusUpdate?.invoke("تجاوزت حصة $model، جاري التبديل إلى $fallback...")
+                                    prefs.selectedModel = fallback
+                                    return@withContext analyzeScreen(bitmap, taskDescription, newTried)
+                                }
+
+                                return@withContext AIAnalysisResult(
+                                    success = false,
+                                    action = null,
+                                    rawResponse = errorBody,
+                                    errorMessage = "تجاوزت الحصة المجانية لجميع النماذج. انتظر قليلاً أو فعّل الفوترة في Google Cloud."
+                                )
+                            }
+
+                            // أخطاء 4xx الأخرى لا فائدة من إعادة المحاولة
+                            if (response.code() in 400..499) {
                                 val isModelError = errorBody.contains("model_not_supported") ||
                                     errorBody.contains("not supported") ||
                                     errorBody.contains("not found") ||
@@ -176,7 +197,6 @@ class AIController(private val context: Context) {
                                     errorBody.contains("MODEL_NOT_FOUND")
 
                                 if (isModelError) {
-                                    // جرّب النموذج التالي من قائمة المزود الحالي
                                     val modelList = prefs.currentModelList
                                     val newTried = triedModels + model
                                     val fallback = modelList.firstOrNull { it !in newTried }
