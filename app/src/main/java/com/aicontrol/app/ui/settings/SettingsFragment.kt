@@ -9,8 +9,13 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import com.aicontrol.app.ai.HuggingFaceModelsClient
 import com.aicontrol.app.databinding.FragmentSettingsBinding
 import com.aicontrol.app.utils.PreferencesManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsFragment : Fragment() {
 
@@ -36,7 +41,7 @@ class SettingsFragment : Fragment() {
 
     private fun setupProviderSpinner() {
         val providers = arrayOf(
-            "🤗 HuggingFace (مجاني)",
+            "🤗 HuggingFace (مجاني - نماذج نصية)",
             "🔵 OpenAI",
             "🔴 Google Gemini (مجاني - موصى به)"
         )
@@ -58,7 +63,6 @@ class SettingsFragment : Fragment() {
                     2    -> PreferencesManager.PROVIDER_GEMINI
                     else -> PreferencesManager.PROVIDER_HF
                 }
-                // عند تغيير المزود: ضبط النموذج على الافتراضي الجديد
                 prefs.selectedModel = prefs.defaultModel
                 updateProviderHint()
                 setupModelSpinner()
@@ -132,7 +136,6 @@ class SettingsFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            // التحقق من الصيغة حسب المزود
             val validationError = when (prefs.apiProvider) {
                 PreferencesManager.PROVIDER_HF -> {
                     if (!key.startsWith("hf_"))
@@ -160,6 +163,11 @@ class SettingsFragment : Fragment() {
             prefs.openAiApiKey = key
             Toast.makeText(requireContext(), "تم حفظ مفتاح API ✓", Toast.LENGTH_SHORT).show()
             binding.etApiKey.setText("••••••••" + key.takeLast(4))
+
+            // Fetch models from HuggingFace API after saving key
+            if (prefs.apiProvider == PreferencesManager.PROVIDER_HF) {
+                fetchHFModels(key)
+            }
         }
 
         binding.btnClearApiKey.setOnClickListener {
@@ -203,8 +211,37 @@ class SettingsFragment : Fragment() {
             Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
         }
 
+        // Refresh models button (for HuggingFace)
         binding.btnSaveSettings.setOnClickListener {
-            Toast.makeText(requireContext(), "تم حفظ الإعدادات ✓", Toast.LENGTH_SHORT).show()
+            if (prefs.apiProvider == PreferencesManager.PROVIDER_HF && prefs.openAiApiKey.isNotBlank()) {
+                fetchHFModels(prefs.openAiApiKey)
+            } else {
+                Toast.makeText(requireContext(), "تم حفظ الإعدادات ✓", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun fetchHFModels(apiKey: String) {
+        Toast.makeText(requireContext(), "جاري جلب النماذج من HuggingFace...", Toast.LENGTH_SHORT).show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val models = withContext(Dispatchers.IO) {
+                HuggingFaceModelsClient.fetchTextModels(apiKey)
+            }
+            if (models.isNotEmpty()) {
+                prefs.dynamicHFModels = models.toTypedArray()
+                setupModelSpinner()
+                Toast.makeText(
+                    requireContext(),
+                    "تم جلب ${models.size} نموذجاً ✓",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                Toast.makeText(
+                    requireContext(),
+                    "تعذر جلب النماذج — استخدمت القائمة الافتراضية",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
