@@ -400,12 +400,13 @@ class AIController(private val context: Context) {
         }
     }
 
-    private fun buildSystemPromptForUITree(): String =
-        "Android UI controller. Elements format: Type:"label"[x,y] attrs\n" +
-        "Reply JSON only, no markdown:\n" +
-        "{\"action\":\"tap\",\"x\":200,\"y\":500,\"reason\":\"why\",\"completed\":false}\n" +
-        "Actions: tap / long_press / type(+\"text\") / scroll(+\"direction\":up|down|left|right) / back / home / complete\n" +
-        "Use exact x,y from elements. completed:true when done."
+    private fun buildSystemPromptForUITree(): String = """
+Android UI controller. Elements: Type:"label"[x,y] tap/scroll/edit
+Reply JSON only — no markdown:
+{"action":"tap","x":200,"y":500,"reason":"why","completed":false}
+Actions: tap / long_press / type(+"text") / scroll(+"direction":up|down|left|right) / back / home / complete
+Use exact x,y from elements. Set completed:true when task is done.
+    """.trimIndent()
 
     private fun buildUserPromptForUITree(taskDescription: String, uiTree: String): String =
         "Task: $taskDescription\n\nScreen:\n$uiTree\n\nNext action JSON:"
