@@ -1,20 +1,17 @@
 package com.aicontrol.app.ui.home
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import com.aicontrol.app.MainActivity
 import com.aicontrol.app.R
 import com.aicontrol.app.data.TrainingRepository
 import com.aicontrol.app.databinding.FragmentHomeBinding
-import com.aicontrol.app.services.AIAccessibilityService
 import com.aicontrol.app.services.FloatingButtonService
 import com.aicontrol.app.utils.PermissionHelper
 import com.aicontrol.app.utils.PreferencesManager
@@ -47,7 +44,6 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupClickListeners() {
-        // Start/Stop floating service
         binding.btnToggleService.setOnClickListener {
             if (FloatingButtonService.isRunning()) {
                 (activity as? MainActivity)?.stopFloatingService()
@@ -56,7 +52,6 @@ class HomeFragment : Fragment() {
             }
         }
 
-        // Permission cards
         binding.cardOverlay.setOnClickListener {
             if (!Settings.canDrawOverlays(requireContext())) {
                 (activity as? MainActivity)?.requestOverlayPermission()
@@ -70,9 +65,7 @@ class HomeFragment : Fragment() {
         }
 
         binding.cardApiKey.setOnClickListener {
-            // Navigate to settings
-            requireActivity().findNavController(R.id.nav_host_fragment)
-                .navigate(R.id.settingsFragment)
+            findNavController().navigate(R.id.settingsFragment)
         }
     }
 
@@ -96,7 +89,6 @@ class HomeFragment : Fragment() {
         )
         binding.tvApiStatus.text = if (hasApiKey) "مُضاف ✓" else "اضغط للإضافة"
 
-        // Overall readiness
         val isReady = hasOverlay && hasAccessibility && hasApiKey
         binding.tvReadyStatus.text = if (isReady) "✅ جاهز للعمل" else "⚠️ يتطلب إعداد"
         binding.tvReadyStatus.setTextColor(
@@ -120,17 +112,11 @@ class HomeFragment : Fragment() {
     }
 
     private fun updateStats() {
-        lifecycleScope.launch {
-            repository.allTasks.observe(viewLifecycleOwner) { tasks ->
-                binding.tvTaskCount.text = "${tasks.size}"
-                binding.tvFavoriteCount.text = "${tasks.count { it.isFavorite }}"
-                binding.tvRunCount.text = "${tasks.sumOf { it.runCount }}"
-            }
+        repository.allTasks.observe(viewLifecycleOwner) { tasks ->
+            binding.tvTaskCount.text = "${tasks.size}"
+            binding.tvFavoriteCount.text = "${tasks.count { it.isFavorite }}"
+            binding.tvRunCount.text = "${tasks.sumOf { it.runCount }}"
         }
-    }
-
-    private fun androidx.fragment.app.Fragment.findNavController(id: Int): androidx.navigation.NavController {
-        return androidx.navigation.Navigation.findNavController(requireActivity(), id)
     }
 
     override fun onDestroyView() {

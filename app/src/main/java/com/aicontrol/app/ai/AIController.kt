@@ -9,7 +9,6 @@ import com.aicontrol.app.services.AIAccessibilityService
 import com.aicontrol.app.services.ScreenCaptureService
 import com.aicontrol.app.utils.PreferencesManager
 import com.google.gson.Gson
-import com.google.gson.JsonParser
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 
@@ -32,7 +31,6 @@ class AIController(private val context: Context) {
         if (isRunning) return
         isRunning = true
         actionCount = 0
-
         job = CoroutineScope(Dispatchers.IO).launch {
             runAILoop(taskDescription)
         }
@@ -53,17 +51,15 @@ class AIController(private val context: Context) {
 
         while (isRunning && actionCount < maxActions) {
             try {
-                // Take screenshot
                 onStatusUpdate?.invoke("جاري التقاط الشاشة...")
                 val screenshot = captureScreen()
 
                 if (screenshot == null) {
-                    onStatusUpdate?.invoke("فشل التقاط الشاشة، إعادة المحاولة...")
-                    delay(2000)
+                    onStatusUpdate?.invoke("لم يتم التقاط الشاشة — تأكد من تفعيل خدمة المساعدة")
+                    delay(3000)
                     continue
                 }
 
-                // Analyze with AI
                 onStatusUpdate?.invoke("جاري تحليل الشاشة بالذكاء الاصطناعي...")
                 val result = analyzeScreen(screenshot, taskDescription)
 
@@ -77,7 +73,6 @@ class AIController(private val context: Context) {
                 onStatusUpdate?.invoke("الإجراء: ${action.reason}")
                 onActionExecuted?.invoke(action)
 
-                // Check if task is complete
                 if (action.completed || action.action == AIAction.ACTION_COMPLETE) {
                     withContext(Dispatchers.Main) {
                         onCompleted?.invoke(true, "تم إكمال المهمة بنجاح!")
@@ -86,11 +81,9 @@ class AIController(private val context: Context) {
                     break
                 }
 
-                // Execute action
                 executeAction(action)
                 actionCount++
 
-                // Wait between actions
                 delay(action.waitMs.toLong().coerceAtLeast(actionDelay))
 
             } catch (e: CancellationException) {
@@ -111,8 +104,10 @@ class AIController(private val context: Context) {
     }
 
     private suspend fun captureScreen(): Bitmap? {
-        return withContext(Dispatchers.Main) {
-            AIAccessibilityService.instance?.captureScreen()
+        return withContext(Dispatchers.IO) {
+            // Try ScreenCaptureService first (MediaProjection)
+            ScreenCaptureService.instance?.getLatestBitmap()
+                ?: AIAccessibilityService.instance?.captureScreen()
         }
     }
 
@@ -132,13 +127,10 @@ class AIController(private val context: Context) {
                     )
                 }
 
-                val systemPrompt = buildSystemPrompt()
-                val userPrompt = buildUserPrompt(taskDescription)
-
                 val messages = listOf(
-                    Message("system", systemPrompt),
+                    Message("system", buildSystemPrompt()),
                     Message("user", listOf(
-                        TextContent(text = userPrompt),
+                        TextContent(text = buildUserPrompt(taskDescription)),
                         ImageContent(imageUrl = ImageUrl(url = "data:image/jpeg;base64,$base64Image"))
                     ))
                 )
@@ -156,8 +148,7 @@ class AIController(private val context: Context) {
                 )
 
                 if (response.isSuccessful) {
-                    val body = response.body()
-                    val content = body?.choices?.firstOrNull()?.message?.content ?: ""
+                    val content = response.body()?.choices?.firstOrNull()?.message?.content ?: ""
                     parseAIResponse(content)
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Unknown error"
@@ -170,18 +161,12 @@ class AIController(private val context: Context) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error analyzing screen", e)
-                AIAnalysisResult(
-                    success = false,
-                    action = null,
-                    rawResponse = "",
-                    errorMessage = e.message
-                )
+                AIAnalysisResult(success = false, action = null, rawResponse = "", errorMessage = e.message)
             }
         }
     }
 
-    private fun buildSystemPrompt(): String {
-        return """
+    private fun buildSystemPrompt(): String = """
 أنت مساعد ذكاء اصطناعي متخصص في التحكم بشاشة الهاتف Android.
 تقوم بتحليل لقطات الشاشة وتقرر الإجراء التالي لإكمال المهمة.
 
@@ -189,11 +174,10 @@ class AIController(private val context: Context) {
 1. أعطِ دائماً إجابة بتنسيق JSON صحيح فقط، بدون أي نص إضافي
 2. حدد الإحداثيات بدقة بناءً على العناصر المرئية في الشاشة
 3. إذا اكتملت المهمة، اضبط "completed" على true
-4. كن دقيقاً في تحديد العناصر التي تريد الضغط عليها
 
-تنسيق الإجابة المطلوب (JSON فقط):
+تنسيق الإجابة (JSON فقط):
 {
-  "action": "tap|long_press|type|swipe|scroll|back|home|wait|complete",
+  "action": "tap|long_press|type|swipe|scroll|back|home|wait|complete|clear_text",
   "x": 540,
   "y": 960,
   "text": "النص للكتابة (للإجراء type فقط)",
@@ -202,32 +186,17 @@ class AIController(private val context: Context) {
   "completed": false,
   "wait_ms": 1000
 }
+    """.trimIndent()
 
-أنواع الإجراءات:
-- tap: الضغط على إحداثيات محددة
-- long_press: الضغط المطول
-- type: كتابة نص
-- swipe: التمرير
-- scroll: التمرير في اتجاه
-- back: زر الرجوع
-- home: الشاشة الرئيسية
-- wait: الانتظار
-- complete: المهمة اكتملت
-        """.trimIndent()
-    }
-
-    private fun buildUserPrompt(taskDescription: String): String {
-        return """
+    private fun buildUserPrompt(taskDescription: String): String = """
 المهمة المطلوبة: $taskDescription
 
 انظر إلى لقطة الشاشة الحالية وقرر الإجراء التالي لإتمام المهمة.
 أعطِ إجابة JSON فقط.
-        """.trimIndent()
-    }
+    """.trimIndent()
 
     private fun parseAIResponse(content: String): AIAnalysisResult {
         return try {
-            // Extract JSON from response
             val jsonStr = extractJson(content)
             val action = gson.fromJson(jsonStr, AIAction::class.java)
             AIAnalysisResult(success = true, action = action, rawResponse = content)
@@ -245,71 +214,55 @@ class AIController(private val context: Context) {
     private fun extractJson(text: String): String {
         val start = text.indexOf('{')
         val end = text.lastIndexOf('}')
-        return if (start != -1 && end != -1) text.substring(start, end + 1) else text
+        return if (start != -1 && end != -1 && end > start) text.substring(start, end + 1) else text
     }
 
     private suspend fun executeAction(action: AIAction) {
         val service = AIAccessibilityService.instance ?: return
-
         when (action.action) {
             AIAction.ACTION_TAP -> {
-                val x = action.x ?: return
-                val y = action.y ?: return
-                service.performTap(x.toFloat(), y.toFloat())
+                val x = action.x?.toFloat() ?: return
+                val y = action.y?.toFloat() ?: return
+                service.performTap(x, y)
             }
             AIAction.ACTION_LONG_PRESS -> {
-                val x = action.x ?: return
-                val y = action.y ?: return
-                service.performLongPress(x.toFloat(), y.toFloat())
+                val x = action.x?.toFloat() ?: return
+                val y = action.y?.toFloat() ?: return
+                service.performLongPress(x, y)
             }
-            AIAction.ACTION_TYPE -> {
-                action.text?.let { service.typeText(it) }
-            }
+            AIAction.ACTION_TYPE -> action.text?.let { service.typeText(it) }
             AIAction.ACTION_SWIPE -> {
-                val x = action.x ?: return
-                val y = action.y ?: return
-                val direction = action.direction ?: "up"
-                service.performSwipe(x.toFloat(), y.toFloat(), direction)
+                val x = action.x?.toFloat() ?: return
+                val y = action.y?.toFloat() ?: return
+                service.performSwipe(x, y, action.direction ?: "up")
             }
-            AIAction.ACTION_SCROLL -> {
-                service.performScroll(action.direction ?: "down")
-            }
-            AIAction.ACTION_BACK -> {
-                service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-            }
-            AIAction.ACTION_HOME -> {
-                service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
-            }
-            AIAction.ACTION_RECENTS -> {
-                service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS)
-            }
-            AIAction.ACTION_WAIT -> {
-                delay(action.waitMs.toLong())
-            }
-            AIAction.ACTION_CLEAR_TEXT -> {
-                service.clearText()
-            }
+            AIAction.ACTION_SCROLL -> service.performScroll(action.direction ?: "down")
+            AIAction.ACTION_BACK ->
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            AIAction.ACTION_HOME ->
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+            AIAction.ACTION_RECENTS ->
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+            AIAction.ACTION_WAIT -> delay(action.waitMs.toLong())
+            AIAction.ACTION_CLEAR_TEXT -> service.clearText()
         }
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
-        val outputStream = ByteArrayOutputStream()
-        // Resize to reduce size
-        val maxSize = 1280
-        val scaledBitmap = if (bitmap.width > maxSize || bitmap.height > maxSize) {
-            val ratio = minOf(maxSize.toFloat() / bitmap.width, maxSize.toFloat() / bitmap.height)
-            Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * ratio).toInt(),
-                (bitmap.height * ratio).toInt(),
-                true
-            )
+        val out = ByteArrayOutputStream()
+        val maxSide = 1280
+        val scaled = if (bitmap.width > maxSide || bitmap.height > maxSide) {
+            val ratio = minOf(maxSide.toFloat() / bitmap.width, maxSide.toFloat() / bitmap.height)
+            Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
         } else bitmap
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
-        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
     companion object {
         private const val TAG = "AIController"
     }
 }
+
+// Needed import for GLOBAL_ACTION_BACK etc.
+private typealias AccessibilityService = android.accessibilityservice.AccessibilityService
