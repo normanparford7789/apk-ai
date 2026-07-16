@@ -3,18 +3,37 @@ package com.aicontrol.app.utils
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.aicontrol.app.ai.OpenAIClient
 
 class PreferencesManager(context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    var openAiApiKey: String
-        get() = prefs.getString(KEY_OPENAI_API_KEY, "") ?: ""
-        set(value) = prefs.edit { putString(KEY_OPENAI_API_KEY, value) }
+    // ─── API ──────────────────────────────────────────────────────────────────
 
+    /** مفتاح الـ API (يبدأ بـ hf_ لـ HuggingFace أو sk- لـ OpenAI) */
+    var openAiApiKey: String
+        get() = prefs.getString(KEY_API_KEY, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_API_KEY, value) }
+
+    /** مزود الخدمة: "huggingface" أو "openai" */
+    var apiProvider: String
+        get() = prefs.getString(KEY_API_PROVIDER, PROVIDER_HF) ?: PROVIDER_HF
+        set(value) = prefs.edit { putString(KEY_API_PROVIDER, value) }
+
+    /** الـ base URL المستخدمة فعلياً حسب المزود */
+    val apiBaseUrl: String
+        get() = if (apiProvider == PROVIDER_OPENAI)
+            OpenAIClient.BASE_URL_OPENAI
+        else
+            OpenAIClient.BASE_URL_HUGGINGFACE
+
+    /** النموذج المختار */
     var selectedModel: String
-        get() = prefs.getString(KEY_SELECTED_MODEL, "gpt-4o") ?: "gpt-4o"
+        get() = prefs.getString(KEY_SELECTED_MODEL, DEFAULT_MODEL_HF) ?: DEFAULT_MODEL_HF
         set(value) = prefs.edit { putString(KEY_SELECTED_MODEL, value) }
+
+    // ─── Task ────────────────────────────────────────────────────────────────
 
     var activeTaskId: Long
         get() = prefs.getLong(KEY_ACTIVE_TASK_ID, -1L)
@@ -24,6 +43,8 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_AI_ENABLED, false)
         set(value) = prefs.edit { putBoolean(KEY_AI_ENABLED, value) }
 
+    // ─── Timing ──────────────────────────────────────────────────────────────
+
     var actionDelay: Int
         get() = prefs.getInt(KEY_ACTION_DELAY, 2000)
         set(value) = prefs.edit { putInt(KEY_ACTION_DELAY, value) }
@@ -31,6 +52,8 @@ class PreferencesManager(context: Context) {
     var maxActions: Int
         get() = prefs.getInt(KEY_MAX_ACTIONS, 50)
         set(value) = prefs.edit { putInt(KEY_MAX_ACTIONS, value) }
+
+    // ─── Float position ──────────────────────────────────────────────────────
 
     var floatX: Int
         get() = prefs.getInt(KEY_FLOAT_X, 100)
@@ -40,24 +63,43 @@ class PreferencesManager(context: Context) {
         get() = prefs.getInt(KEY_FLOAT_Y, 300)
         set(value) = prefs.edit { putInt(KEY_FLOAT_Y, value) }
 
+    // ─── Companion ───────────────────────────────────────────────────────────
+
     companion object {
         private const val PREFS_NAME = "ai_control_prefs"
-        private const val KEY_OPENAI_API_KEY = "openai_api_key"
+
+        private const val KEY_API_KEY        = "api_key"
+        private const val KEY_API_PROVIDER   = "api_provider"
         private const val KEY_SELECTED_MODEL = "selected_model"
         private const val KEY_ACTIVE_TASK_ID = "active_task_id"
-        private const val KEY_AI_ENABLED = "ai_enabled"
-        private const val KEY_ACTION_DELAY = "action_delay"
-        private const val KEY_MAX_ACTIONS = "max_actions"
-        private const val KEY_FLOAT_X = "float_x"
-        private const val KEY_FLOAT_Y = "float_y"
+        private const val KEY_AI_ENABLED     = "ai_enabled"
+        private const val KEY_ACTION_DELAY   = "action_delay"
+        private const val KEY_MAX_ACTIONS    = "max_actions"
+        private const val KEY_FLOAT_X        = "float_x"
+        private const val KEY_FLOAT_Y        = "float_y"
 
-        @Volatile
-        private var instance: PreferencesManager? = null
+        const val PROVIDER_HF     = "huggingface"
+        const val PROVIDER_OPENAI = "openai"
 
-        fun getInstance(context: Context): PreferencesManager {
-            return instance ?: synchronized(this) {
+        // أفضل نماذج HuggingFace المجانية للرؤية
+        const val DEFAULT_MODEL_HF = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+
+        val MODELS_HF = arrayOf(
+            "meta-llama/Llama-3.2-11B-Vision-Instruct",
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "microsoft/Phi-3.5-vision-instruct"
+        )
+        val MODELS_OPENAI = arrayOf(
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo"
+        )
+
+        @Volatile private var instance: PreferencesManager? = null
+
+        fun getInstance(context: Context): PreferencesManager =
+            instance ?: synchronized(this) {
                 instance ?: PreferencesManager(context.applicationContext).also { instance = it }
             }
-        }
     }
 }

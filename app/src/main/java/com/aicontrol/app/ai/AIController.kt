@@ -15,7 +15,7 @@ import java.io.ByteArrayOutputStream
 class AIController(private val context: Context) {
 
     private val prefs = PreferencesManager.getInstance(context)
-    private val apiService = OpenAIClient.create()
+    private val apiService get() = OpenAIClient.create(prefs.apiBaseUrl)
     private val gson = Gson()
     private var isRunning = false
     private var job: Job? = null

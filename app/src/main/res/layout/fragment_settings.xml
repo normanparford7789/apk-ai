@@ -18,7 +18,7 @@
             android:textStyle="bold"
             android:layout_marginBottom="16dp" />
 
-        <!-- API Key Section -->
+        <!-- Provider Selection -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -35,24 +35,63 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🔑 مفتاح OpenAI API"
+                    android:text="🌐 مزود الذكاء الاصطناعي"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="يمكنك الحصول على المفتاح من platform.openai.com"
+                    android:text="HuggingFace مجاني تماماً ويدعم نماذج بصرية متقدمة"
                     android:textSize="12sp"
                     android:textColor="#888"
+                    android:layout_marginBottom="8dp" />
+
+                <Spinner
+                    android:id="@+id/spinner_provider"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- API Key Section -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardElevation="4dp"
+            app:cardCornerRadius="12dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/tv_api_key_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔑 مفتاح HuggingFace API"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/tv_api_key_hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="احصل على مفتاحك المجاني من: huggingface.co/settings/tokens"
+                    android:textSize="12sp"
+                    android:textColor="#4CAF50"
                     android:layout_marginBottom="8dp" />
 
                 <androidx.appcompat.widget.AppCompatEditText
                     android:id="@+id/et_api_key"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="sk-..."
+                    android:hint="hf_..."
                     android:inputType="textPassword"
                     android:layout_marginBottom="8dp" />
 
@@ -107,6 +146,14 @@
                     android:text="🤖 نموذج الذكاء الاصطناعي"
                     android:textSize="16sp"
                     android:textStyle="bold"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="جميع النماذج المعروضة تدعم تحليل الصور (Vision)"
+                    android:textSize="12sp"
+                    android:textColor="#888"
                     android:layout_marginBottom="8dp" />
 
                 <Spinner
@@ -138,13 +185,12 @@
                     android:textStyle="bold"
                     android:layout_marginBottom="12dp" />
 
-                <!-- Delay -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="4dp">
 
                     <TextView
                         android:layout_width="0dp"
@@ -170,13 +216,12 @@
                     android:value="2000"
                     android:layout_marginBottom="12dp" />
 
-                <!-- Max Actions -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="4dp">
 
                     <TextView
                         android:layout_width="0dp"

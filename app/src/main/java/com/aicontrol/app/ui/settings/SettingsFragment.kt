@@ -5,10 +5,10 @@ import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.aicontrol.app.R
 import com.aicontrol.app.databinding.FragmentSettingsBinding
 import com.aicontrol.app.utils.PreferencesManager
 
@@ -26,25 +26,75 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         prefs = PreferencesManager.getInstance(requireContext())
+        setupProviderSpinner()
+        setupModelSpinner()
         loadSettings()
         setupListeners()
-        setupModelSpinner()
     }
 
+    // ─── Provider (HuggingFace / OpenAI) ─────────────────────────────────────
+
+    private fun setupProviderSpinner() {
+        val providers = arrayOf("🤗 HuggingFace (مجاني)", "🔵 OpenAI")
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, providers)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerProvider.adapter = adapter
+
+        val idx = if (prefs.apiProvider == PreferencesManager.PROVIDER_OPENAI) 1 else 0
+        binding.spinnerProvider.setSelection(idx)
+
+        binding.spinnerProvider.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                prefs.apiProvider = if (position == 1) PreferencesManager.PROVIDER_OPENAI
+                                    else PreferencesManager.PROVIDER_HF
+                updateProviderHint()
+                setupModelSpinner()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun updateProviderHint() {
+        if (prefs.apiProvider == PreferencesManager.PROVIDER_HF) {
+            binding.tvApiKeyLabel.text = "🔑 مفتاح HuggingFace API"
+            binding.tvApiKeyHint.text = "احصل على مفتاحك المجاني من: huggingface.co/settings/tokens"
+            binding.etApiKey.hint = "hf_..."
+        } else {
+            binding.tvApiKeyLabel.text = "🔑 مفتاح OpenAI API"
+            binding.tvApiKeyHint.text = "احصل على مفتاحك من: platform.openai.com/api-keys"
+            binding.etApiKey.hint = "sk-..."
+        }
+    }
+
+    // ─── Model spinner ────────────────────────────────────────────────────────
+
     private fun setupModelSpinner() {
-        val models = arrayOf("gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview")
+        val models = if (prefs.apiProvider == PreferencesManager.PROVIDER_OPENAI)
+            PreferencesManager.MODELS_OPENAI else PreferencesManager.MODELS_HF
+
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, models)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerModel.adapter = adapter
 
-        val currentIndex = models.indexOf(prefs.selectedModel).coerceAtLeast(0)
-        binding.spinnerModel.setSelection(currentIndex)
+        // اختر النموذج الحالي، وإلا الأول
+        val idx = models.indexOf(prefs.selectedModel).coerceAtLeast(0)
+        binding.spinnerModel.setSelection(idx)
+        if (prefs.selectedModel !in models) prefs.selectedModel = models[0]
+
+        binding.spinnerModel.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                prefs.selectedModel = models[position]
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
 
+    // ─── Load saved values ────────────────────────────────────────────────────
+
     private fun loadSettings() {
+        updateProviderHint()
         val apiKey = prefs.openAiApiKey
         if (apiKey.isNotBlank()) {
-            // Show masked key
             binding.etApiKey.setText("••••••••" + apiKey.takeLast(4))
         }
         binding.sliderDelay.value = prefs.actionDelay.toFloat()
@@ -53,6 +103,8 @@ class SettingsFragment : Fragment() {
         binding.tvMaxActionsValue.text = "${prefs.maxActions} إجراء"
     }
 
+    // ─── Listeners ───────────────────────────────────────────────────────────
+
     private fun setupListeners() {
         binding.btnSaveApiKey.setOnClickListener {
             val key = binding.etApiKey.text.toString().trim()
@@ -60,8 +112,16 @@ class SettingsFragment : Fragment() {
                 Toast.makeText(requireContext(), "أدخل مفتاح API جديد", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (!key.startsWith("sk-")) {
-                Toast.makeText(requireContext(), "مفتاح API غير صحيح (يجب أن يبدأ بـ sk-)", Toast.LENGTH_SHORT).show()
+            // التحقق من الصيغة حسب المزود
+            val isHF    = prefs.apiProvider == PreferencesManager.PROVIDER_HF
+            val validHF = key.startsWith("hf_")
+            val validOA = key.startsWith("sk-")
+            if (isHF && !validHF) {
+                Toast.makeText(requireContext(), "مفتاح HuggingFace يجب أن يبدأ بـ hf_", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (!isHF && !validOA) {
+                Toast.makeText(requireContext(), "مفتاح OpenAI يجب أن يبدأ بـ sk-", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             prefs.openAiApiKey = key
@@ -76,38 +136,28 @@ class SettingsFragment : Fragment() {
         }
 
         binding.btnToggleVisibility.setOnClickListener {
-            val currentType = binding.etApiKey.inputType
-            if (currentType == InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD) {
+            val isPassword = binding.etApiKey.inputType ==
+                (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            if (isPassword) {
                 binding.etApiKey.inputType = InputType.TYPE_CLASS_TEXT
                 binding.etApiKey.setText(prefs.openAiApiKey)
                 binding.btnToggleVisibility.text = "إخفاء"
             } else {
                 binding.etApiKey.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                if (prefs.openAiApiKey.isNotBlank()) {
+                if (prefs.openAiApiKey.isNotBlank())
                     binding.etApiKey.setText("••••••••" + prefs.openAiApiKey.takeLast(4))
-                }
                 binding.btnToggleVisibility.text = "إظهار"
             }
         }
 
         binding.sliderDelay.addOnChangeListener { _, value, _ ->
-            val intVal = value.toInt()
-            prefs.actionDelay = intVal
-            binding.tvDelayValue.text = "${intVal}ms"
+            prefs.actionDelay = value.toInt()
+            binding.tvDelayValue.text = "${value.toInt()}ms"
         }
 
         binding.sliderMaxActions.addOnChangeListener { _, value, _ ->
-            val intVal = value.toInt()
-            prefs.maxActions = intVal
-            binding.tvMaxActionsValue.text = "$intVal إجراء"
-        }
-
-        binding.spinnerModel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val models = arrayOf("gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview")
-                prefs.selectedModel = models[position]
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            prefs.maxActions = value.toInt()
+            binding.tvMaxActionsValue.text = "${value.toInt()} إجراء"
         }
 
         binding.btnSaveSettings.setOnClickListener {

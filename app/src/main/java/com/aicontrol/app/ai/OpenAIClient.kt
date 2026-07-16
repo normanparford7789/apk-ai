@@ -23,22 +23,23 @@ interface OpenAIApiService {
 
 object OpenAIClient {
 
-    private const val BASE_URL = "https://api.openai.com/"
+    // HuggingFace Inference API (OpenAI-compatible) — default
+    const val BASE_URL_HUGGINGFACE = "https://api-inference.huggingface.co/"
+    const val BASE_URL_OPENAI      = "https://api.openai.com/"
 
-    fun create(): OpenAIApiService {
+    fun create(baseUrl: String = BASE_URL_HUGGINGFACE): OpenAIApiService {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = HttpLoggingInterceptor.Level.BASIC
         }
-
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
+            .connectTimeout(90, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(90, TimeUnit.SECONDS)
             .build()
 
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(baseUrl)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
