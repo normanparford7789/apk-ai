@@ -32,21 +32,34 @@ class SettingsFragment : Fragment() {
         setupListeners()
     }
 
-    // ─── Provider (HuggingFace / OpenAI) ─────────────────────────────────────
+    // ─── Provider (HuggingFace / OpenAI / Google Gemini) ─────────────────────
 
     private fun setupProviderSpinner() {
-        val providers = arrayOf("🤗 HuggingFace (مجاني)", "🔵 OpenAI")
+        val providers = arrayOf(
+            "🤗 HuggingFace (مجاني)",
+            "🔵 OpenAI",
+            "🔴 Google Gemini (مجاني - موصى به)"
+        )
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, providers)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerProvider.adapter = adapter
 
-        val idx = if (prefs.apiProvider == PreferencesManager.PROVIDER_OPENAI) 1 else 0
+        val idx = when (prefs.apiProvider) {
+            PreferencesManager.PROVIDER_OPENAI  -> 1
+            PreferencesManager.PROVIDER_GEMINI  -> 2
+            else                                -> 0
+        }
         binding.spinnerProvider.setSelection(idx)
 
         binding.spinnerProvider.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                prefs.apiProvider = if (position == 1) PreferencesManager.PROVIDER_OPENAI
-                                    else PreferencesManager.PROVIDER_HF
+                prefs.apiProvider = when (position) {
+                    1    -> PreferencesManager.PROVIDER_OPENAI
+                    2    -> PreferencesManager.PROVIDER_GEMINI
+                    else -> PreferencesManager.PROVIDER_HF
+                }
+                // عند تغيير المزود: ضبط النموذج على الافتراضي الجديد
+                prefs.selectedModel = prefs.defaultModel
                 updateProviderHint()
                 setupModelSpinner()
             }
@@ -55,28 +68,34 @@ class SettingsFragment : Fragment() {
     }
 
     private fun updateProviderHint() {
-        if (prefs.apiProvider == PreferencesManager.PROVIDER_HF) {
-            binding.tvApiKeyLabel.text = "🔑 مفتاح HuggingFace API"
-            binding.tvApiKeyHint.text = "احصل على مفتاحك المجاني من: huggingface.co/settings/tokens"
-            binding.etApiKey.hint = "hf_..."
-        } else {
-            binding.tvApiKeyLabel.text = "🔑 مفتاح OpenAI API"
-            binding.tvApiKeyHint.text = "احصل على مفتاحك من: platform.openai.com/api-keys"
-            binding.etApiKey.hint = "sk-..."
+        when (prefs.apiProvider) {
+            PreferencesManager.PROVIDER_HF -> {
+                binding.tvApiKeyLabel.text = "🔑 مفتاح HuggingFace API"
+                binding.tvApiKeyHint.text = "احصل على مفتاحك المجاني من: huggingface.co/settings/tokens"
+                binding.etApiKey.hint = "hf_..."
+            }
+            PreferencesManager.PROVIDER_OPENAI -> {
+                binding.tvApiKeyLabel.text = "🔑 مفتاح OpenAI API"
+                binding.tvApiKeyHint.text = "احصل على مفتاحك من: platform.openai.com/api-keys"
+                binding.etApiKey.hint = "sk-..."
+            }
+            PreferencesManager.PROVIDER_GEMINI -> {
+                binding.tvApiKeyLabel.text = "🔑 مفتاح Google Gemini API"
+                binding.tvApiKeyHint.text = "احصل على مفتاحك المجاني من: aistudio.google.com → Get API Key"
+                binding.etApiKey.hint = "AIza..."
+            }
         }
     }
 
     // ─── Model spinner ────────────────────────────────────────────────────────
 
     private fun setupModelSpinner() {
-        val models = if (prefs.apiProvider == PreferencesManager.PROVIDER_OPENAI)
-            PreferencesManager.MODELS_OPENAI else PreferencesManager.MODELS_HF
+        val models = prefs.currentModelList
 
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, models)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerModel.adapter = adapter
 
-        // اختر النموذج الحالي، وإلا الأول
         val idx = models.indexOf(prefs.selectedModel).coerceAtLeast(0)
         binding.spinnerModel.setSelection(idx)
         if (prefs.selectedModel !in models) prefs.selectedModel = models[0]
@@ -112,18 +131,32 @@ class SettingsFragment : Fragment() {
                 Toast.makeText(requireContext(), "أدخل مفتاح API جديد", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+
             // التحقق من الصيغة حسب المزود
-            val isHF    = prefs.apiProvider == PreferencesManager.PROVIDER_HF
-            val validHF = key.startsWith("hf_")
-            val validOA = key.startsWith("sk-")
-            if (isHF && !validHF) {
-                Toast.makeText(requireContext(), "مفتاح HuggingFace يجب أن يبدأ بـ hf_", Toast.LENGTH_LONG).show()
+            val validationError = when (prefs.apiProvider) {
+                PreferencesManager.PROVIDER_HF -> {
+                    if (!key.startsWith("hf_"))
+                        "مفتاح HuggingFace يجب أن يبدأ بـ hf_"
+                    else null
+                }
+                PreferencesManager.PROVIDER_OPENAI -> {
+                    if (!key.startsWith("sk-"))
+                        "مفتاح OpenAI يجب أن يبدأ بـ sk-"
+                    else null
+                }
+                PreferencesManager.PROVIDER_GEMINI -> {
+                    if (!key.startsWith("AIza"))
+                        "مفتاح Google Gemini يجب أن يبدأ بـ AIza"
+                    else null
+                }
+                else -> null
+            }
+
+            if (validationError != null) {
+                Toast.makeText(requireContext(), validationError, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (!isHF && !validOA) {
-                Toast.makeText(requireContext(), "مفتاح OpenAI يجب أن يبدأ بـ sk-", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
+
             prefs.openAiApiKey = key
             Toast.makeText(requireContext(), "تم حفظ مفتاح API ✓", Toast.LENGTH_SHORT).show()
             binding.etApiKey.setText("••••••••" + key.takeLast(4))

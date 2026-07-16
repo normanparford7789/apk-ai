@@ -23,9 +23,14 @@ interface OpenAIApiService {
 
 object OpenAIClient {
 
-    // HuggingFace OpenAI-compatible Inference Router — supports /v1/chat/completions
+    // HuggingFace OpenAI-compatible Inference Router
     const val BASE_URL_HUGGINGFACE = "https://router.huggingface.co/"
-    const val BASE_URL_OPENAI      = "https://api.openai.com/"
+
+    // OpenAI
+    const val BASE_URL_OPENAI = "https://api.openai.com/"
+
+    // Google Gemini — OpenAI-compatible endpoint (v1beta)
+    const val BASE_URL_GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
     fun create(baseUrl: String = BASE_URL_HUGGINGFACE): OpenAIApiService {
         val logging = HttpLoggingInterceptor().apply {

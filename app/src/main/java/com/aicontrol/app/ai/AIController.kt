@@ -160,24 +160,33 @@ class AIController(private val context: Context) {
                         )
 
                         if (response.isSuccessful) {
-                            val content = response.body()?.choices?.firstOrNull()?.message?.content ?: ""
+                            val content = response.body()
+                                ?.choices?.firstOrNull()
+                                ?.message?.content ?: ""
                             return@withContext parseAIResponse(content)
                         } else {
                             val errorBody = response.errorBody()?.string() ?: "Unknown error"
+
+                            // أخطاء 4xx (ما عدا 429 = rate limit) لا فائدة من إعادة المحاولة
                             if (response.code() in 400..499 && response.code() != 429) {
-                                if (errorBody.contains("model_not_supported") ||
+                                val isModelError = errorBody.contains("model_not_supported") ||
                                     errorBody.contains("not supported") ||
                                     errorBody.contains("not found") ||
-                                    errorBody.contains("does not exist")) {
-                                    // النموذج الحالي غير مدعوم — جرّب النموذج التالي في القائمة
+                                    errorBody.contains("does not exist") ||
+                                    errorBody.contains("MODEL_NOT_FOUND")
+
+                                if (isModelError) {
+                                    // جرّب النموذج التالي من قائمة المزود الحالي
+                                    val modelList = prefs.currentModelList
                                     val newTried = triedModels + model
-                                    val fallback = PreferencesManager.MODELS_HF
-                                        .firstOrNull { it !in newTried }
+                                    val fallback = modelList.firstOrNull { it !in newTried }
+
                                     if (fallback != null) {
                                         Log.w(TAG, "Model $model not supported, trying $fallback")
                                         prefs.selectedModel = fallback
                                         return@withContext analyzeScreen(bitmap, taskDescription, newTried)
                                     }
+
                                     return@withContext AIAnalysisResult(
                                         success = false,
                                         action = null,
@@ -185,6 +194,7 @@ class AIController(private val context: Context) {
                                         errorMessage = "جميع النماذج المتاحة غير مدعومة. تحقق من مفتاح API."
                                     )
                                 }
+
                                 return@withContext AIAnalysisResult(
                                     success = false,
                                     action = null,
@@ -192,6 +202,7 @@ class AIController(private val context: Context) {
                                     errorMessage = "خطأ API: ${response.code()} - $errorBody"
                                 )
                             }
+
                             lastError = "خطأ API: ${response.code()} - $errorBody"
                         }
                     } catch (e: IOException) {
@@ -220,7 +231,8 @@ class AIController(private val context: Context) {
 
 قواعد مهمة:
 1. أعطِ دائماً إجابة بتنسيق JSON صحيح فقط، بدون أي نص إضافي قبل أو بعد JSON
-2. يجب أن تكون قيم x وy أعداداً صحيحة تمثل إحداثيات البكسل الفعلية على الشاشة (مثل: "x": 540، "y": 960)
+2. يجب أن تكون قيم x وy أعداداً صحيحة تمثل إحداثيات البكسل الفعلية على الشاشة
+   مثال صحيح: "x": 540، "y": 960
    لا تستخدم أبداً أعداداً عشرية أو قيماً مُعيَّرة بين 0.0 و1.0
 3. حدد الإحداثيات بدقة بناءً على العناصر المرئية في الشاشة
 4. إذا اكتملت المهمة، اضبط "completed" على true
@@ -262,10 +274,9 @@ class AIController(private val context: Context) {
     }
 
     /**
-     * استخراج JSON من نص الاستجابة مع دعم كتل ``` ` و ```json
+     * استخراج JSON من نص الاستجابة مع دعم كتل ``` و ```json
      */
     private fun extractJson(text: String): String {
-        // إزالة كتل markdown مثل ```json ... ``` أو ``` ... ```
         val cleaned = text
             .replace(Regex("```json\\s*", RegexOption.IGNORE_CASE), "")
             .replace(Regex("```\\s*"), "")

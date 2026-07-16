@@ -11,30 +11,44 @@ class PreferencesManager(context: Context) {
 
     // ─── API ──────────────────────────────────────────────────────────────────
 
-    /** مفتاح الـ API (يبدأ بـ hf_ لـ HuggingFace أو sk- لـ OpenAI) */
+    /** مفتاح الـ API */
     var openAiApiKey: String
         get() = prefs.getString(KEY_API_KEY, "") ?: ""
         set(value) = prefs.edit { putString(KEY_API_KEY, value) }
 
-    /** مزود الخدمة: "huggingface" أو "openai" */
+    /** مزود الخدمة: "huggingface" أو "openai" أو "google" */
     var apiProvider: String
         get() = prefs.getString(KEY_API_PROVIDER, PROVIDER_HF) ?: PROVIDER_HF
         set(value) = prefs.edit { putString(KEY_API_PROVIDER, value) }
 
     /** الـ base URL المستخدمة فعلياً حسب المزود */
     val apiBaseUrl: String
-        get() = if (apiProvider == PROVIDER_OPENAI)
-            OpenAIClient.BASE_URL_OPENAI
-        else
-            OpenAIClient.BASE_URL_HUGGINGFACE
+        get() = when (apiProvider) {
+            PROVIDER_OPENAI  -> OpenAIClient.BASE_URL_OPENAI
+            PROVIDER_GEMINI  -> OpenAIClient.BASE_URL_GEMINI
+            else             -> OpenAIClient.BASE_URL_HUGGINGFACE
+        }
 
     /** النموذج المختار */
     var selectedModel: String
         get() = prefs.getString(KEY_SELECTED_MODEL, DEFAULT_MODEL_HF) ?: DEFAULT_MODEL_HF
         set(value) = prefs.edit { putString(KEY_SELECTED_MODEL, value) }
 
+    /** النموذج الافتراضي حسب المزود الحالي */
     val defaultModel: String
-        get() = DEFAULT_MODEL_HF
+        get() = when (apiProvider) {
+            PROVIDER_OPENAI -> DEFAULT_MODEL_OPENAI
+            PROVIDER_GEMINI -> DEFAULT_MODEL_GEMINI
+            else            -> DEFAULT_MODEL_HF
+        }
+
+    /** قائمة النماذج المتاحة حسب المزود الحالي */
+    val currentModelList: Array<String>
+        get() = when (apiProvider) {
+            PROVIDER_OPENAI -> MODELS_OPENAI
+            PROVIDER_GEMINI -> MODELS_GEMINI
+            else            -> MODELS_HF
+        }
 
     // ─── Task ────────────────────────────────────────────────────────────────
 
@@ -83,24 +97,37 @@ class PreferencesManager(context: Context) {
 
         const val PROVIDER_HF     = "huggingface"
         const val PROVIDER_OPENAI = "openai"
+        const val PROVIDER_GEMINI = "google"
 
-        // النموذج الافتراضي: Qwen2.5-VL-7B مدعوم بشكل موثوق على HuggingFace Router
+        // ── نماذج HuggingFace ──────────────────────────────────────────────
         const val DEFAULT_MODEL_HF = "Qwen/Qwen2.5-VL-7B-Instruct"
-
         val MODELS_HF = arrayOf(
-            "Qwen/Qwen2.5-VL-7B-Instruct",      // مستقر ومدعوم - الافتراضي
-            "Qwen/Qwen2.5-VL-3B-Instruct",      // أخف وأسرع
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "Qwen/Qwen2.5-VL-3B-Instruct",
             "meta-llama/Llama-4-Scout-17B-16E-Instruct",
             "google/gemma-3-12b-it",
             "google/gemma-3-4b-it",
-            "Qwen/Qwen3-VL-8B-Instruct",        // قد لا يكون متاحاً على بعض المزودين
+            "Qwen/Qwen3-VL-8B-Instruct",
             "Qwen/Qwen3-VL-4B-Instruct",
             "Qwen/Qwen3-VL-2B-Instruct"
         )
+
+        // ── نماذج OpenAI ──────────────────────────────────────────────────
+        const val DEFAULT_MODEL_OPENAI = "gpt-4o"
         val MODELS_OPENAI = arrayOf(
             "gpt-4o",
             "gpt-4o-mini",
             "gpt-4-turbo"
+        )
+
+        // ── نماذج Google Gemini ───────────────────────────────────────────
+        const val DEFAULT_MODEL_GEMINI = "gemini-2.0-flash"
+        val MODELS_GEMINI = arrayOf(
+            "gemini-2.0-flash",          // الأسرع والأذكى للتحكم بالشاشة
+            "gemini-2.0-flash-lite",     // أخف وأسرع - حصة مجانية أكبر
+            "gemini-1.5-flash",          // مستقر ومجرَّب
+            "gemini-1.5-flash-8b",       // الأسرع - مناسب للمهام البسيطة
+            "gemini-1.5-pro"             // الأذكى - لكن حصة مجانية أقل
         )
 
         @Volatile private var instance: PreferencesManager? = null
