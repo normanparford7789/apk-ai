@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <ImageView
+        android:id="@+id/fab_ai"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:src="@drawable/ic_ai_brain"
+        android:background="@drawable/fab_background"
+        android:padding="12dp"
+        android:elevation="8dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="AI Control" />
+
+</FrameLayout>

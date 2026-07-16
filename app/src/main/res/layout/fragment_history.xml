@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="سجل الإجراءات"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_total_actions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="إجمالي الإجراءات: 0"
+        android:textSize="12sp"
+        android:textColor="#888"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tv_empty_history"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:text="لا يوجد سجل بعد\nابدأ تشغيل الذكاء الاصطناعي لرؤية الإجراءات"
+        android:gravity="center"
+        android:textSize="16sp"
+        android:textColor="#888"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_history"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</LinearLayout>

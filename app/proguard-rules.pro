@@ -1,0 +1,8 @@
+-keep class com.aicontrol.app.** { *; }
+-keep class com.aicontrol.app.ai.models.** { *; }
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+-keep public class * extends java.lang.Exception
+-keep class retrofit2.** { *; }
+-keepattributes Signature
+-keepattributes Exceptions

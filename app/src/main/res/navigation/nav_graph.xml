@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.aicontrol.app.ui.home.HomeFragment"
+        android:label="الرئيسية" />
+
+    <fragment
+        android:id="@+id/trainingFragment"
+        android:name="com.aicontrol.app.ui.training.TrainingFragment"
+        android:label="التدريب" />
+
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="com.aicontrol.app.ui.history.HistoryFragment"
+        android:label="السجل" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.aicontrol.app.ui.settings.SettingsFragment"
+        android:label="الإعدادات" />
+
+</navigation>

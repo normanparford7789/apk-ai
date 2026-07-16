@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI Control</string>
+    <string name="accessibility_service_label">AI Control - تحكم الذكاء الاصطناعي</string>
+    <string name="accessibility_service_description">يتيح هذا التطبيق للذكاء الاصطناعي قراءة محتوى الشاشة والتحكم بها تلقائياً بناءً على تعليماتك</string>
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_training">التدريب</string>
+    <string name="nav_history">السجل</string>
+    <string name="nav_settings">الإعدادات</string>
+</resources>
